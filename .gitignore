@@ -31,8 +31,8 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# entrolint binary
-entrolint
+# entrolint binary (root-only — don't shadow cmd/entrolint/ source dir)
+/entrolint
 
 # goreleaser output
 dist/
