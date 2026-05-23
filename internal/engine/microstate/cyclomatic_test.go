@@ -13,7 +13,7 @@ func parseFile(t *testing.T, src string) File {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	return File{Path: "test.go", AST: node, Fset: fset}
+	return File{Path: "test.go", Src: []byte(src), AST: node, Fset: fset}
 }
 
 func TestCyclomatic_Name(t *testing.T) {

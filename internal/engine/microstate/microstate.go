@@ -13,8 +13,11 @@ import (
 )
 
 // File is a parsed Go source file ready for microstate measurement.
+// Src holds the raw source bytes so microstates that need physical
+// line information (e.g. length) don't have to re-read from disk.
 type File struct {
 	Path string
+	Src  []byte
 	AST  *ast.File
 	Fset *token.FileSet
 }
