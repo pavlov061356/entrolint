@@ -15,11 +15,15 @@ import (
 // File is a parsed Go source file ready for microstate measurement.
 // Src holds the raw source bytes so microstates that need physical
 // line information (e.g. length) don't have to re-read from disk.
+// ChurnCount holds the number of commits touching this file inside
+// the calibration window; the analyzer populates it from gitx so
+// microstates stay pure and free of subprocess I/O.
 type File struct {
-	Path string
-	Src  []byte
-	AST  *ast.File
-	Fset *token.FileSet
+	Path       string
+	Src        []byte
+	AST        *ast.File
+	Fset       *token.FileSet
+	ChurnCount int
 }
 
 // Microstate is one measurable contributor to the entropy score S.
