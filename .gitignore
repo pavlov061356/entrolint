@@ -30,3 +30,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# entrolint binary
+entrolint
+
+# goreleaser output
+dist/
+
+# entrolint per-repo calibration artifact
+.entrolint.cache.json
