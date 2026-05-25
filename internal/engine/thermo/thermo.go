@@ -25,9 +25,9 @@ const NormalizationFloor = 0.3
 // LogNormalParams holds the fitted parameters of a single microstate's
 // raw-value distribution. Exported for serialization to the cache.
 type LogNormalParams struct {
-	Mu    float64
-	Sigma float64
-	Valid bool // false if the fit failed (insufficient data or zero variance)
+	Mu    float64 `json:"mu"`
+	Sigma float64 `json:"sigma"`
+	Valid bool    `json:"valid"` // false if the fit failed (insufficient data or zero variance)
 }
 
 // Score is what the engine returns per file.
@@ -83,6 +83,9 @@ func (e *Engine) Score(f microstate.File) Score {
 // K returns the calibrated normalization constant.
 func (e *Engine) K() float64 { return e.k }
 
+// Alpha returns the churn-to-temperature sensitivity coefficient.
+func (e *Engine) Alpha() float64 { return e.alpha }
+
 // LogNormalByName returns a copy of the calibrated lognormal params.
 func (e *Engine) LogNormalByName() map[string]LogNormalParams {
 	out := make(map[string]LogNormalParams, len(e.lognormal))
@@ -90,6 +93,22 @@ func (e *Engine) LogNormalByName() map[string]LogNormalParams {
 		out[k] = v
 	}
 	return out
+}
+
+// NewEngine constructs a pre-calibrated Engine from existing parameters
+// — typically loaded from cache. Use Calibrate when fitting fresh data.
+func NewEngine(ms []microstate.Microstate, weights map[string]float64, k, alpha float64, lognormal map[string]LogNormalParams) *Engine {
+	cp := make(map[string]LogNormalParams, len(lognormal))
+	for name, p := range lognormal {
+		cp[name] = p
+	}
+	return &Engine{
+		microstates: ms,
+		weights:     weights,
+		lognormal:   cp,
+		k:           k,
+		alpha:       alpha,
+	}
 }
 
 // contribution returns w · ln(1 + m_norm) — the per-microstate term
