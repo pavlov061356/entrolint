@@ -45,8 +45,25 @@ func TestComputeDelta_Empty(t *testing.T) {
 	if d.Total != 0 || d.Density != 0 || d.LinesChanged != 0 {
 		t.Errorf("got %+v, want zero values", d)
 	}
-	if d.Files != nil {
-		t.Errorf("Files = %v, want nil", d.Files)
+	// Files must be a non-nil empty slice so JSON renders [] rather
+	// than null — downstream array iteration stays well-defined for
+	// PRs that touch only non-Go paths.
+	if d.Files == nil {
+		t.Error("Files = nil, want non-nil empty slice")
+	}
+	if len(d.Files) != 0 {
+		t.Errorf("len(Files) = %d, want 0", len(d.Files))
+	}
+}
+
+func TestComputeDelta_EmptyMarshalsAsArray(t *testing.T) {
+	d := ComputeDelta(nil, 0)
+	blob, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(blob), `"files":[]`) {
+		t.Errorf("empty Files must marshal as `[]`, got: %s", string(blob))
 	}
 }
 
@@ -185,14 +202,28 @@ func TestDelta_Fails_PosInfDensityFailsClosed(t *testing.T) {
 	}
 }
 
-func TestDelta_Fails_NegInfDensityPasses(t *testing.T) {
-	// −Inf would only arise from S_base = +Inf which is itself a
-	// corruption signal, but the gate is for "growth"; a wildly
-	// negative density still represents a refactor by sign and we
-	// keep the spec's `> threshold` semantics.
+func TestDelta_Fails_NegInfDensityFailsClosed(t *testing.T) {
+	// −Inf can only come from a corrupted upstream score (e.g. a
+	// weight forced to −∞). The gate is fail-closed across the whole
+	// non-finite envelope — corruption never sneaks through just
+	// because its sign happens to point the right way.
 	d := Delta{Density: math.Inf(-1)}
-	if d.Fails(0.05) {
-		t.Error("-Inf density should not fail the gate")
+	if !d.Fails(0.05) {
+		t.Error("-Inf density should fail the gate (corruption signal)")
+	}
+}
+
+func TestDelta_Fails_NaNPerFileDeltaFailsClosed(t *testing.T) {
+	// Per-file NaN is also a corruption signal: aggregate Density may
+	// be finite (e.g. another +Δ canceled the NaN-producing entry),
+	// but the gate should still fail because the verdict was computed
+	// over a partial corpus.
+	d := Delta{
+		Density: 0.001,
+		Files:   []FileDelta{{Path: "a.go", Kind: DeltaModified, Delta: math.NaN()}},
+	}
+	if !d.Fails(0.05) {
+		t.Error("per-file NaN Delta should trip the gate even when Density looks fine")
 	}
 }
 

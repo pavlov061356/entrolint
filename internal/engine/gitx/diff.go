@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -90,9 +91,12 @@ func (r SkipReason) String() string {
 }
 
 // MarshalJSON renders SkipReason as its string identifier so JSON
-// consumers don't have to mirror the iota order.
+// consumers don't have to mirror the iota order. Delegates to
+// encoding/json to handle escaping symmetrically with DeltaKind —
+// today every name is safe ASCII, but a future identifier with a
+// quote or non-ASCII rune must not silently emit invalid JSON.
 func (r SkipReason) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + r.String() + `"`), nil
+	return json.Marshal(r.String())
 }
 
 // UnmarshalJSON accepts the same identifiers MarshalJSON emits;

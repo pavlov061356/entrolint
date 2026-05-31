@@ -299,6 +299,32 @@ func TestParseGoBytes_Invalid(t *testing.T) {
 	}
 }
 
+func TestIsAnalyzablePath(t *testing.T) {
+	cases := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"plain go file", "main.go", true},
+		{"nested go file", "pkg/sub/a.go", true},
+		{"test file is analyzable", "pkg/x_test.go", true},
+		{"non-go", "README.md", false},
+		{"go-ish suffix", "x.gox", false},
+		{"vendored go", "vendor/foo/bar.go", false},
+		{"vendored nested", "internal/vendor/x.go", false},
+		{"dotdir go", ".git/objects/foo.go", false},
+		{"dotdir nested go", "pkg/.gen/x.go", false},
+		{"dotfile at root is still analyzable as long as no dir is dot-prefixed", ".bashrc.go", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := IsAnalyzablePath(c.path); got != c.want {
+				t.Errorf("IsAnalyzablePath(%q) = %v, want %v", c.path, got, c.want)
+			}
+		})
+	}
+}
+
 func TestParseGoBytes_Empty(t *testing.T) {
 	_, ok := ParseGoBytes("empty.go", nil)
 	if ok {

@@ -56,20 +56,26 @@ func TestWriteCheckTable_FAIL(t *testing.T) {
 	}
 }
 
-func TestWriteCheckJSON_RoundTrips(t *testing.T) {
+func TestWriteCheckJSON_RoundTripsPASS(t *testing.T) {
 	var buf bytes.Buffer
-	if err := writeCheckJSON(&buf, sampleResult()); err != nil {
+	if err := writeCheckJSON(&buf, sampleResult(), 0.05); err != nil {
 		t.Fatalf("writeCheckJSON: %v", err)
 	}
-	var got pipeline.CheckResult
+	var got checkJSONReport
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("invalid JSON emitted: %v\nbytes: %s", err, buf.String())
 	}
-	if got.Base != "abc123" || got.Head != "def456" {
-		t.Errorf("round-tripped Base/Head wrong: %+v", got)
+	if got.Verdict != "pass" {
+		t.Errorf("Verdict = %q, want pass (density 0.025 < threshold 0.05)", got.Verdict)
 	}
-	if got.Delta.LinesChanged != 50 || len(got.Delta.Files) != 2 {
-		t.Errorf("round-tripped Delta wrong: %+v", got.Delta)
+	if got.Threshold != 0.05 {
+		t.Errorf("Threshold = %v, want 0.05", got.Threshold)
+	}
+	if got.Result.Base != "abc123" || got.Result.Head != "def456" {
+		t.Errorf("round-tripped Base/Head wrong: %+v", got.Result)
+	}
+	if got.Result.Delta.LinesChanged != 50 || len(got.Result.Delta.Files) != 2 {
+		t.Errorf("round-tripped Delta wrong: %+v", got.Result.Delta)
 	}
 	// DeltaKind and SkipReason must serialize as strings for downstream
 	// tooling. SetIndent inserts a space after colons so the substring
@@ -78,6 +84,22 @@ func TestWriteCheckJSON_RoundTrips(t *testing.T) {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("JSON missing %q\nfull:\n%s", want, buf.String())
 		}
+	}
+}
+
+func TestWriteCheckJSON_VerdictFAIL(t *testing.T) {
+	res := sampleResult()
+	res.Delta.Density = 0.10
+	var buf bytes.Buffer
+	if err := writeCheckJSON(&buf, res, 0.05); err != nil {
+		t.Fatalf("writeCheckJSON: %v", err)
+	}
+	var got checkJSONReport
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON emitted: %v", err)
+	}
+	if got.Verdict != "fail" {
+		t.Errorf("Verdict = %q, want fail", got.Verdict)
 	}
 }
 

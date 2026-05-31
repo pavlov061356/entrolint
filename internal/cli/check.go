@@ -36,7 +36,12 @@ var checkCmd = &cobra.Command{
 matching what GitHub shows on a PR), scores each Go file at both refs
 under the calibrated entropy engine, and fails when the resulting
 ΔS_density exceeds delta_s_max in .entrolint.yaml.`,
+	Args: cobra.NoArgs, // refuse stray positional args — root is --root, not args[0]
 	RunE: func(cmd *cobra.Command, _ []string) error {
+		// SilenceErrors prevents Cobra from printing the error itself —
+		// Execute() in root.go already writes it to stderr, and we don't
+		// want users to see the gate-failure message twice.
+		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
 		return runCheck(cmd.OutOrStdout(), checkRoot)
 	},
@@ -67,7 +72,7 @@ func runCheck(out io.Writer, root string) error {
 	}
 
 	if checkJSON {
-		if err := writeCheckJSON(out, res); err != nil {
+		if err := writeCheckJSON(out, res, cfg.DeltaSMax); err != nil {
 			return err
 		}
 	} else if err := writeCheckTable(out, res, cfg.DeltaSMax); err != nil {
@@ -80,10 +85,29 @@ func runCheck(out io.Writer, root string) error {
 	return nil
 }
 
-func writeCheckJSON(out io.Writer, res pipeline.CheckResult) error {
+// checkJSONReport is the JSON envelope `entrolint check --json` emits.
+// Verdict and Threshold live here (not on pipeline.CheckResult) so the
+// engine layer stays gate-policy-free — the threshold is a CLI/config
+// concern. Downstream tooling can read Verdict without recomputing
+// Density > Threshold itself.
+type checkJSONReport struct {
+	Verdict   string               `json:"verdict"`
+	Threshold float64              `json:"threshold"`
+	Result    pipeline.CheckResult `json:"result"`
+}
+
+func writeCheckJSON(out io.Writer, res pipeline.CheckResult, threshold float64) error {
+	verdict := "pass"
+	if res.Delta.Fails(threshold) {
+		verdict = "fail"
+	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-	return enc.Encode(res)
+	return enc.Encode(checkJSONReport{
+		Verdict:   verdict,
+		Threshold: threshold,
+		Result:    res,
+	})
 }
 
 func writeCheckTable(out io.Writer, res pipeline.CheckResult, threshold float64) error {

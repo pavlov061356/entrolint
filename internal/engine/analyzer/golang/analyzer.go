@@ -71,11 +71,36 @@ func skipDir(path, rootAbs string) error {
 	if path == rootAbs {
 		return nil
 	}
-	base := filepath.Base(path)
-	if base == "vendor" || strings.HasPrefix(base, ".") {
+	if isExcludedDirName(filepath.Base(path)) {
 		return fs.SkipDir
 	}
 	return nil
+}
+
+// isExcludedDirName mirrors the dot-prefix + vendor exclusions skipDir
+// applies during the tree walk. Pulled out so IsAnalyzablePath can
+// stay in sync without two copies of the rule.
+func isExcludedDirName(name string) bool {
+	return name == "vendor" || strings.HasPrefix(name, ".")
+}
+
+// IsAnalyzablePath reports whether a repo-relative path would be picked
+// up by Analyzer.Analyze on a fresh tree walk: a `.go` suffix and no
+// excluded directory (vendor, dot-prefixed) anywhere in the ancestry.
+// The check pipeline uses this to keep its diff-side filter in lockstep
+// with the calibration walk — otherwise scoring would happen against
+// an engine fit on a corpus that excluded the same paths.
+func IsAnalyzablePath(path string) bool {
+	if !strings.HasSuffix(path, ".go") {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts[:len(parts)-1] {
+		if isExcludedDirName(part) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a Analyzer) parseGoFile(path, rootAbs string) (microstate.File, bool) {
