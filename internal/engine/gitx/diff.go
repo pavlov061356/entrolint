@@ -67,8 +67,52 @@ const (
 
 // SkippedPath is one excluded diff entry.
 type SkippedPath struct {
-	Path   string
-	Reason SkipReason
+	Path   string     `json:"path"`
+	Reason SkipReason `json:"reason"`
+}
+
+// String renders SkipReason as a stable identifier suitable for reports
+// and JSON output. Unknown values fall through to "unknown" so a future
+// reason added before the report layer catches up doesn't crash.
+func (r SkipReason) String() string {
+	switch r {
+	case SkipBinary:
+		return "binary"
+	case SkipSubmodule:
+		return "submodule"
+	case SkipSymlink:
+		return "symlink"
+	case SkipModeOnly:
+		return "mode_only"
+	default:
+		return "unknown"
+	}
+}
+
+// MarshalJSON renders SkipReason as its string identifier so JSON
+// consumers don't have to mirror the iota order.
+func (r SkipReason) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + r.String() + `"`), nil
+}
+
+// UnmarshalJSON accepts the same identifiers MarshalJSON emits;
+// unknown values resolve to SkipReason(0) so older readers can still
+// parse newer JSON.
+func (r *SkipReason) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(string(data), `"`)
+	switch s {
+	case "binary":
+		*r = SkipBinary
+	case "submodule":
+		*r = SkipSubmodule
+	case "symlink":
+		*r = SkipSymlink
+	case "mode_only":
+		*r = SkipModeOnly
+	default:
+		*r = 0
+	}
+	return nil
 }
 
 // DiffResult is the typed output of Diff. Files plus Skipped together

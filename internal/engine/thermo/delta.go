@@ -37,6 +37,25 @@ func (k DeltaKind) MarshalJSON() ([]byte, error) {
 	return json.Marshal(k.String())
 }
 
+// UnmarshalJSON accepts the same string identifiers MarshalJSON emits.
+// Unknown values fall back to DeltaModified — matching String's
+// default branch — so older consumers can still parse newer JSON.
+func (k *DeltaKind) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "added":
+		*k = DeltaAdded
+	case "removed":
+		*k = DeltaRemoved
+	default:
+		*k = DeltaModified
+	}
+	return nil
+}
+
 // FileDelta is one file's contribution to ΔS_total.
 //
 // Precondition on inputs: SBase and SHead are expected to be ≥ 0

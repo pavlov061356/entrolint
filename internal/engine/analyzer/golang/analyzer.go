@@ -83,23 +83,38 @@ func (a Analyzer) parseGoFile(path, rootAbs string) (microstate.File, bool) {
 	if err != nil {
 		return microstate.File{}, false
 	}
+	relPath := path
+	if rel, err := filepath.Rel(rootAbs, path); err == nil {
+		relPath = rel
+	}
+	f, ok := ParseGoBytes(relPath, src)
+	if !ok {
+		return microstate.File{}, false
+	}
+	a.attachChurn(&f)
+	return f, true
+}
+
+// ParseGoBytes parses src as a Go file and returns a microstate.File
+// labeled with `path` (used only as a display name and as input to
+// go/parser's diagnostic prefix). No filesystem or git I/O happens.
+//
+// Use this when the source comes from somewhere other than disk —
+// e.g. a git blob fetched via gitx.FileAtRef for the `check` pipeline.
+// Returns (zero, false) on parse failure so callers can silently skip,
+// matching Analyze's tree-walk behavior.
+func ParseGoBytes(path string, src []byte) (microstate.File, bool) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
 		return microstate.File{}, false
 	}
-	relPath := path
-	if rel, err := filepath.Rel(rootAbs, path); err == nil {
-		relPath = rel
-	}
-	f := microstate.File{
-		Path: relPath,
+	return microstate.File{
+		Path: path,
 		Src:  src,
 		AST:  node,
 		Fset: fset,
-	}
-	a.attachChurn(&f)
-	return f, true
+	}, true
 }
 
 func (a Analyzer) attachChurn(f *microstate.File) {

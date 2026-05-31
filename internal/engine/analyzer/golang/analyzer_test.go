@@ -272,6 +272,40 @@ func TestAnalyze_ChurnSinceDaysOverride(t *testing.T) {
 	}
 }
 
+func TestParseGoBytes_Valid(t *testing.T) {
+	src := []byte("package p\nfunc f() {}\n")
+	f, ok := ParseGoBytes("a.go", src)
+	if !ok {
+		t.Fatal("ParseGoBytes returned ok=false on valid source")
+	}
+	if f.Path != "a.go" {
+		t.Errorf("Path = %q, want a.go", f.Path)
+	}
+	if string(f.Src) != string(src) {
+		t.Errorf("Src not preserved verbatim")
+	}
+	if f.AST == nil || f.Fset == nil {
+		t.Error("AST and Fset must be populated")
+	}
+	if f.ChurnCount != 0 {
+		t.Errorf("ChurnCount = %d, want 0 (ParseGoBytes never touches churn)", f.ChurnCount)
+	}
+}
+
+func TestParseGoBytes_Invalid(t *testing.T) {
+	_, ok := ParseGoBytes("bad.go", []byte("this is not valid Go"))
+	if ok {
+		t.Error("ParseGoBytes returned ok=true on invalid source")
+	}
+}
+
+func TestParseGoBytes_Empty(t *testing.T) {
+	_, ok := ParseGoBytes("empty.go", nil)
+	if ok {
+		t.Error("ParseGoBytes returned ok=true on empty source (no package clause)")
+	}
+}
+
 func sliceEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
