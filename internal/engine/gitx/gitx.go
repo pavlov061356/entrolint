@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -36,11 +37,17 @@ type LocalRunner struct {
 // Run executes `git -C <Dir> <args...>` and returns stdout. The
 // returned error wraps ErrUnavailable if git cannot be invoked; for
 // non-zero git exits the error is plain and stdout is still returned.
+//
+// LC_ALL/LANG/LANGUAGE are forced to "C" so callers that inspect
+// stderr substrings (FileAtRef's ErrNotAtRef detection, Diff's
+// ErrInvalidRef classification) see stable English messages
+// regardless of the user's locale.
 func (r LocalRunner) Run(args ...string) ([]byte, error) {
 	// #nosec G204 -- git arguments are constructed internally from
 	// fixed log flags and a path supplied by trusted callers; entrolint
 	// never passes user input directly into git invocations.
 	cmd := exec.Command("git", append([]string{"-C", r.Dir}, args...)...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
