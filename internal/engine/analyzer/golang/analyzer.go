@@ -1,0 +1,156 @@
+// Package golang walks a Go module/directory and produces parsed
+// microstate.File values ready for scoring.
+//
+// Exclusions in v0.1: `vendor/` and any directory whose name starts
+// with `.` (e.g. `.git`, `.idea`, `.vscode`). `_test.go` files ARE
+// included — they're real code with their own complexity. Generated
+// files are NOT special-cased; if they're noisy hotspots, surfacing
+// them is informative rather than a bug.
+package golang
+
+import (
+	"go/parser"
+	"go/token"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/pavlov061356/entrolint/internal/engine/gitx"
+	"github.com/pavlov061356/entrolint/internal/engine/microstate"
+)
+
+const defaultChurnSinceDays = 90
+
+// Analyzer walks a Go source tree and returns parsed microstate.File
+// values. The zero value is usable; ChurnRunner can be left nil when
+// the caller doesn't need churn populated.
+type Analyzer struct {
+	// ChurnRunner is the gitx.Runner used to populate File.ChurnCount.
+	// If nil, ChurnCount stays 0 — useful for static-only scans.
+	ChurnRunner gitx.Runner
+
+	// ChurnSinceDays is the window passed to gitx.ChurnCount. If zero,
+	// defaults to 90.
+	ChurnSinceDays int
+}
+
+// Analyze walks `root` (file or directory) and returns parsed files.
+// Files that fail to read or parse are silently skipped; errors from
+// the walk itself (e.g. root doesn't exist) surface as the returned
+// error. File.Path is relative to root.
+func (a Analyzer) Analyze(root string) ([]microstate.File, error) {
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+
+	var files []microstate.File
+	walkErr := filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return skipDir(path, rootAbs)
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		if f, ok := a.parseGoFile(path, rootAbs); ok {
+			files = append(files, f)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	return files, nil
+}
+
+func skipDir(path, rootAbs string) error {
+	if path == rootAbs {
+		return nil
+	}
+	if isExcludedDirName(filepath.Base(path)) {
+		return fs.SkipDir
+	}
+	return nil
+}
+
+// isExcludedDirName mirrors the dot-prefix + vendor exclusions skipDir
+// applies during the tree walk. Pulled out so IsAnalyzablePath can
+// stay in sync without two copies of the rule.
+func isExcludedDirName(name string) bool {
+	return name == "vendor" || strings.HasPrefix(name, ".")
+}
+
+// IsAnalyzablePath reports whether a repo-relative path would be picked
+// up by Analyzer.Analyze on a fresh tree walk: a `.go` suffix and no
+// excluded directory (vendor, dot-prefixed) anywhere in the ancestry.
+// The check pipeline uses this to keep its diff-side filter in lockstep
+// with the calibration walk — otherwise scoring would happen against
+// an engine fit on a corpus that excluded the same paths.
+func IsAnalyzablePath(path string) bool {
+	if !strings.HasSuffix(path, ".go") {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts[:len(parts)-1] {
+		if isExcludedDirName(part) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a Analyzer) parseGoFile(path, rootAbs string) (microstate.File, bool) {
+	src, err := os.ReadFile(path) // #nosec G304 -- path comes from the user-specified analysis root.
+	if err != nil {
+		return microstate.File{}, false
+	}
+	relPath := path
+	if rel, err := filepath.Rel(rootAbs, path); err == nil {
+		relPath = rel
+	}
+	f, ok := ParseGoBytes(relPath, src)
+	if !ok {
+		return microstate.File{}, false
+	}
+	a.attachChurn(&f)
+	return f, true
+}
+
+// ParseGoBytes parses src as a Go file and returns a microstate.File
+// labeled with `path` (used only as a display name and as input to
+// go/parser's diagnostic prefix). No filesystem or git I/O happens.
+//
+// Use this when the source comes from somewhere other than disk —
+// e.g. a git blob fetched via gitx.FileAtRef for the `check` pipeline.
+// Returns (zero, false) on parse failure so callers can silently skip,
+// matching Analyze's tree-walk behavior.
+func ParseGoBytes(path string, src []byte) (microstate.File, bool) {
+	fset := token.NewFileSet()
+	node, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+	if err != nil {
+		return microstate.File{}, false
+	}
+	return microstate.File{
+		Path: path,
+		Src:  src,
+		AST:  node,
+		Fset: fset,
+	}, true
+}
+
+func (a Analyzer) attachChurn(f *microstate.File) {
+	if a.ChurnRunner == nil {
+		return
+	}
+	days := a.ChurnSinceDays
+	if days == 0 {
+		days = defaultChurnSinceDays
+	}
+	if c, err := gitx.ChurnCount(a.ChurnRunner, f.Path, days); err == nil {
+		f.ChurnCount = c
+	}
+}
