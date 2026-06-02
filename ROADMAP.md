@@ -9,22 +9,27 @@
 заменены на внутренние эквиваленты или вынесены в условие «когда репа
 станет публичной».
 
-## v0.1 — Minimum viable physics
+## v0.1 — Minimum viable physics ✅
+
+Релиз 2026-06-02. Тег `v0.1.0` на master.
 
 **Цель:** получить честный `ΔS` за одну итерацию рефакторинга на Go-проекте.
 Доказать, что метафора превращается в число, которое не противоречит интуиции.
 
-- Реализация на Go, единый бинарь.
-- Анализатор только для Go (`go/ast`, `go/parser`, `token.FileSet`).
-- Микросостояния: `cyclomatic`, `nesting`, `length`, `churn`.
-- Формула `S = k · Σ wᵢ · ln(1 + mᵢ_norm)`; калибровка нормализации по
-  процентилям анализируемой репы (self-calibration на первом запуске).
-- Режим `scan` — CLI-таблица: файл, S, T, доминирующее микросостояние.
-  Сортировка по T, флаг `--top N`.
-- Режим `check` — `--base <sha> --head <sha>`, агрегированный ΔS,
-  exit code ≠ 0 при превышении порога. Машино-читаемый JSON через `--json`.
-- Конфигурация: `.entrolint.yaml` с весами, `k`, порогом `ΔS_max`.
-- Dogfooding: `entrolint` гоняется на самом entrolint в CI.
+- ✅ Реализация на Go, единый бинарь (`cmd/entrolint`).
+- ✅ Анализатор только для Go (`go/ast`, `go/parser`, `token.FileSet`).
+- ✅ Микросостояния: `cyclomatic`, `nesting`, `length` входят в S;
+  `churn` — в T (температура = S · ξ(churn)).
+- ✅ Формула `S = k · Σ wᵢ · ln(1 + mᵢ_norm)`; нормализация — lognormal
+  CDF с фиксированным флором 0.3, калибровка `k` на медиану 1 по корпусу.
+- ✅ Режим `scan` — таблица `PATH/S/T/DOMINANT`, сортировка по T, флаг `--top N`,
+  `--json`, `--recalibrate`.
+- ✅ Режим `check` — `--base/--head`, агрегированный ΔS_total и ΔS_density,
+  exit 1 при ΔS_density > delta_s_max. JSON-конверт `{verdict, threshold, result}`.
+- ✅ Конфигурация: `.entrolint.yaml` с весами и `delta_s_max`. Кэш калибровки
+  `.entrolint.cache.json`, общий для scan и check.
+- 🟡 Dogfooding `entrolint` на самом entrolint — выполнено вручную перед
+  релизом; интеграция в CI как отдельный шаг отложена до v0.2.
 
 **Не входит:** coupling, duplication, O-классификация, HTML, SARIF, второй язык.
 
