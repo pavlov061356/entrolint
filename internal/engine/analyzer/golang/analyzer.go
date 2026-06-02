@@ -71,11 +71,36 @@ func skipDir(path, rootAbs string) error {
 	if path == rootAbs {
 		return nil
 	}
-	base := filepath.Base(path)
-	if base == "vendor" || strings.HasPrefix(base, ".") {
+	if isExcludedDirName(filepath.Base(path)) {
 		return fs.SkipDir
 	}
 	return nil
+}
+
+// isExcludedDirName mirrors the dot-prefix + vendor exclusions skipDir
+// applies during the tree walk. Pulled out so IsAnalyzablePath can
+// stay in sync without two copies of the rule.
+func isExcludedDirName(name string) bool {
+	return name == "vendor" || strings.HasPrefix(name, ".")
+}
+
+// IsAnalyzablePath reports whether a repo-relative path would be picked
+// up by Analyzer.Analyze on a fresh tree walk: a `.go` suffix and no
+// excluded directory (vendor, dot-prefixed) anywhere in the ancestry.
+// The check pipeline uses this to keep its diff-side filter in lockstep
+// with the calibration walk — otherwise scoring would happen against
+// an engine fit on a corpus that excluded the same paths.
+func IsAnalyzablePath(path string) bool {
+	if !strings.HasSuffix(path, ".go") {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts[:len(parts)-1] {
+		if isExcludedDirName(part) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a Analyzer) parseGoFile(path, rootAbs string) (microstate.File, bool) {
@@ -83,23 +108,38 @@ func (a Analyzer) parseGoFile(path, rootAbs string) (microstate.File, bool) {
 	if err != nil {
 		return microstate.File{}, false
 	}
+	relPath := path
+	if rel, err := filepath.Rel(rootAbs, path); err == nil {
+		relPath = rel
+	}
+	f, ok := ParseGoBytes(relPath, src)
+	if !ok {
+		return microstate.File{}, false
+	}
+	a.attachChurn(&f)
+	return f, true
+}
+
+// ParseGoBytes parses src as a Go file and returns a microstate.File
+// labeled with `path` (used only as a display name and as input to
+// go/parser's diagnostic prefix). No filesystem or git I/O happens.
+//
+// Use this when the source comes from somewhere other than disk —
+// e.g. a git blob fetched via gitx.FileAtRef for the `check` pipeline.
+// Returns (zero, false) on parse failure so callers can silently skip,
+// matching Analyze's tree-walk behavior.
+func ParseGoBytes(path string, src []byte) (microstate.File, bool) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
 		return microstate.File{}, false
 	}
-	relPath := path
-	if rel, err := filepath.Rel(rootAbs, path); err == nil {
-		relPath = rel
-	}
-	f := microstate.File{
-		Path: relPath,
+	return microstate.File{
+		Path: path,
 		Src:  src,
 		AST:  node,
 		Fset: fset,
-	}
-	a.attachChurn(&f)
-	return f, true
+	}, true
 }
 
 func (a Analyzer) attachChurn(f *microstate.File) {

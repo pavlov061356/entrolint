@@ -37,6 +37,25 @@ func (k DeltaKind) MarshalJSON() ([]byte, error) {
 	return json.Marshal(k.String())
 }
 
+// UnmarshalJSON accepts the same string identifiers MarshalJSON emits.
+// Unknown values fall back to DeltaModified — matching String's
+// default branch — so older consumers can still parse newer JSON.
+func (k *DeltaKind) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "added":
+		*k = DeltaAdded
+	case "removed":
+		*k = DeltaRemoved
+	default:
+		*k = DeltaModified
+	}
+	return nil
+}
+
 // FileDelta is one file's contribution to ΔS_total.
 //
 // Precondition on inputs: SBase and SHead are expected to be ≥ 0
@@ -127,11 +146,12 @@ func ComputeDelta(files []FileDelta, linesChanged int) Delta {
 	if denom < 1 {
 		denom = 1
 	}
-	var owned []FileDelta
-	if len(files) > 0 {
-		owned = make([]FileDelta, len(files))
-		copy(owned, files)
-	}
+	// Always allocate (non-nil even at len==0) so JSON consumers see
+	// `"files": []` instead of `"files": null` — `null` breaks
+	// downstream array iteration (jq `.delta.files[]`, JS for-of) in
+	// the empty-PR case.
+	owned := make([]FileDelta, len(files))
+	copy(owned, files)
 	return Delta{
 		Total:        total,
 		Density:      total / float64(denom),
@@ -150,11 +170,17 @@ func ComputeDelta(files []FileDelta, linesChanged int) Delta {
 // non-negative threshold — the only threshold shape the spec
 // sanctions.
 func (d Delta) Fails(densityMax float64) bool {
-	if math.IsNaN(d.Density) {
+	if math.IsNaN(d.Density) || math.IsInf(d.Density, 0) {
+		// −Inf is included: it can only come from a corrupted score
+		// (e.g. a weight forced to −∞ via config), and a corrupted
+		// pipeline should not silently slip through the gate just
+		// because the corruption happens to point the right way.
 		return true
 	}
-	if math.IsInf(d.Density, 1) {
-		return true
+	for _, f := range d.Files {
+		if math.IsNaN(f.Delta) || math.IsInf(f.Delta, 0) {
+			return true
+		}
 	}
 	return d.Density > densityMax
 }
