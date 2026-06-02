@@ -8,6 +8,7 @@ import (
 	"github.com/pavlov061356/entrolint/internal/engine/analyzer/golang"
 	"github.com/pavlov061356/entrolint/internal/engine/gitx"
 	"github.com/pavlov061356/entrolint/internal/engine/thermo"
+	"github.com/pavlov061356/entrolint/internal/scaling"
 )
 
 // CheckOptions configures one `entrolint check` run.
@@ -37,6 +38,7 @@ type CheckResult struct {
 	Base    string             `json:"base"`
 	Head    string             `json:"head"`
 	Delta   thermo.Delta       `json:"delta"`
+	Scaling scaling.Result     `json:"scaling"`
 	Skipped []gitx.SkippedPath `json:"skipped,omitempty"`
 }
 
@@ -100,12 +102,33 @@ func Check(opts CheckOptions) (CheckResult, error) {
 		linesChanged += c.LinesChanged()
 	}
 
+	scalingResult := scaling.Analyze(diff.Files)
+	delta := thermo.ComputeDelta(fileDeltas, linesChanged)
+	if scalingResult.DowngradeBonus != 0 {
+		delta = applyScalingBonus(delta, scalingResult.DowngradeBonus)
+	}
+
 	return CheckResult{
 		Base:    baseSHA,
 		Head:    headSHA,
-		Delta:   thermo.ComputeDelta(fileDeltas, linesChanged),
+		Delta:   delta,
+		Scaling: scalingResult,
 		Skipped: diff.Skipped,
 	}, nil
+}
+
+// applyScalingBonus folds the (always-negative) downgrade reward into
+// ΔS_total per docs/scaling.md §"Downgrade reward". Density re-derives
+// from the new total against d.LinesChanged — the same denominator
+// ComputeDelta already used, so the two stay coherent.
+func applyScalingBonus(d thermo.Delta, bonus float64) thermo.Delta {
+	denom := d.LinesChanged
+	if denom < 1 {
+		denom = 1
+	}
+	d.Total += bonus
+	d.Density = d.Total / float64(denom)
+	return d
 }
 
 // calibrateForCheck fits (or loads from cache) the engine against the
