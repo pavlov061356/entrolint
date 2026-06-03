@@ -106,7 +106,11 @@ func Check(opts CheckOptions) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("patches %s...%s: %w", baseSHA, headSHA, err)
 	}
-	scalingResult := scaling.Analyze(scaling.Input{Changes: diff.Files, Patches: patches})
+	scalingResult := scaling.Analyze(scaling.Input{
+		Changes: diff.Files,
+		Patches: patches,
+		Root:    rootAbs,
+	})
 	delta := thermo.ComputeDelta(fileDeltas, linesChanged)
 	if scalingResult.DowngradeBonus != 0 {
 		delta = applyScalingBonus(delta, scalingResult.DowngradeBonus)

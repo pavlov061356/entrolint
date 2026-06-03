@@ -11,10 +11,16 @@ import "github.com/pavlov061356/entrolint/internal/engine/gitx"
 type Input struct {
 	Changes []gitx.Change
 	// Patches is keyed by head-side path (or base-side for deletions)
-	// and contains the raw `git diff --unified=0 -z` payload for that
+	// and contains the raw `git diff --unified=0` payload for that
 	// file. Empty map is valid — detectors that don't need patches
 	// (none yet, but kept for future asymmetry) ignore it.
 	Patches map[string][]byte
+	// Root is the absolute path to the working tree being analyzed.
+	// Typed detectors use it to feed packages.Load — Patches alone
+	// don't carry enough information for cross-package type queries.
+	// Empty string is a valid default for tests that hand-build Input
+	// and don't exercise the typed code path.
+	Root string
 }
 
 // Hit is one detector firing on one site. Size is the architectural
