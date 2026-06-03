@@ -103,17 +103,25 @@ v0.2.x они захардкожены; в v0.8 калибруются вмес�
 }
 ```
 
-Текстовый вывод показывает PR-уровень класс в строке вердикта и (если
-есть) самый горячий detector hit отдельной строкой:
+Текстовый вывод показывает PR-уровень класс в строке вердикта, при
+провале — список причин, при наличии — каждый не-`O(1)` detector hit
+отдельной строкой:
 
 ```
-PASS  ΔS_total=-0.84  ΔS_density=-0.0012  scaling_class=O(1)
+PASS  ΔS_total=1.2500  ΔS_density=0.0250  threshold=0.0500  scaling_class=O(1)  lines_changed=50  files=2
 ```
 
 ```
-FAIL  ΔS_total=+1.42  ΔS_density=+0.0234  scaling_class=O(k)
-  scaling: implementor_scan O(k), 7 implementors touched in internal/proto
+FAIL  ΔS_total=1.4200  ΔS_density=0.0234  threshold=0.0050  scaling_class=O(k)  lines_changed=60  files=3
+  reason: ΔS_density 0.0234 > 0.0050
+  scaling: implementor_scan O(k) in internal/proto/codec.go (size=7) — 7 implementors touched
 ```
+
+Поля строки вердикта стабильны по порядку: `verdict`, `ΔS_total`,
+`ΔS_density`, `threshold`, `scaling_class`, `lines_changed`, `files`.
+Поля разделены двумя пробелами — `awk` по `"\t"` не сработает, но
+`grep -oE 'scaling_class=\S+'` и подобные регулярные выражения по
+имени поля стабильны.
 
 ## Downgrade reward — пропорциональный
 

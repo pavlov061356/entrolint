@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
 	"github.com/pavlov061356/entrolint/internal/engine/pipeline"
+	"github.com/pavlov061356/entrolint/internal/scaling"
 	"github.com/spf13/cobra"
 )
 
@@ -23,24 +25,22 @@ var (
 	checkRoot        string
 )
 
-// errGateFailed is returned (and wrapped) when ΔS_density exceeds the
-// configured threshold. It exists so callers (and tests) can detect a
-// gate failure without parsing the error message — the typical CLI
-// exit code is still 1.
-var errGateFailed = errors.New("entrolint: ΔS gate failed")
+// errGateFailed is returned (and wrapped) when the check pipeline's
+// Verdict trips on any axis (ΔS_density or scaling_class). It exists so
+// callers (and tests) can detect a gate failure without parsing the
+// error message — the typical CLI exit code is still 1.
+var errGateFailed = errors.New("entrolint: gate failed")
 
 var checkCmd = &cobra.Command{
 	Use:   "check",
-	Short: "Compute ΔS between base and head and gate the PR",
+	Short: "Compute ΔS and scaling class between base and head and gate the PR",
 	Long: `check resolves the diff between --base and --head (triple-dot,
 matching what GitHub shows on a PR), scores each Go file at both refs
-under the calibrated entropy engine, and fails when the resulting
-ΔS_density exceeds delta_s_max in .entrolint.yaml.`,
-	Args: cobra.NoArgs, // refuse stray positional args — root is --root, not args[0]
+under the calibrated entropy engine, computes the PR's scaling class,
+and fails when ΔS_density exceeds delta_s_max OR scaling_class exceeds
+scaling_class_max in .entrolint.yaml.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// SilenceErrors prevents Cobra from printing the error itself —
-		// Execute() in root.go already writes it to stderr, and we don't
-		// want users to see the gate-failure message twice.
 		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
 		return runCheck(cmd.OutOrStdout(), checkRoot)
@@ -71,54 +71,69 @@ func runCheck(out io.Writer, root string) error {
 		return err
 	}
 
+	verdict := res.Verdict(cfg)
+
 	if checkJSON {
-		if err := writeCheckJSON(out, res, cfg.DeltaSMax); err != nil {
+		if err := writeCheckJSON(out, res, cfg, verdict); err != nil {
 			return err
 		}
-	} else if err := writeCheckTable(out, res, cfg.DeltaSMax); err != nil {
+	} else if err := writeCheckTable(out, res, cfg, verdict); err != nil {
 		return err
 	}
 
-	if res.Delta.Fails(cfg.DeltaSMax) {
-		return fmt.Errorf("%w: ΔS_density=%.4f > %.4f", errGateFailed, res.Delta.Density, cfg.DeltaSMax)
+	if verdict.Failed {
+		return fmt.Errorf("%w: %s", errGateFailed, strings.Join(verdict.Reasons, "; "))
 	}
 	return nil
 }
 
 // checkJSONReport is the JSON envelope `entrolint check --json` emits.
-// Verdict and Threshold live here (not on pipeline.CheckResult) so the
-// engine layer stays gate-policy-free — the threshold is a CLI/config
-// concern. Downstream tooling can read Verdict without recomputing
-// Density > Threshold itself.
+// Verdict + thresholds live here (not on pipeline.CheckResult) so the
+// engine layer stays gate-policy-free — thresholds are a CLI/config
+// concern. Downstream tooling can read Verdict + Reasons without
+// recomputing them.
 type checkJSONReport struct {
-	Verdict   string               `json:"verdict"`
-	Threshold float64              `json:"threshold"`
-	Result    pipeline.CheckResult `json:"result"`
+	Verdict         string               `json:"verdict"`
+	Reasons         []string             `json:"reasons,omitempty"`
+	Threshold       float64              `json:"threshold"`
+	ScalingClassMax scaling.Class        `json:"scaling_class_max"`
+	Result          pipeline.CheckResult `json:"result"`
 }
 
-func writeCheckJSON(out io.Writer, res pipeline.CheckResult, threshold float64) error {
+func writeCheckJSON(out io.Writer, res pipeline.CheckResult, cfg config.Config, v pipeline.Verdict) error {
 	verdict := "pass"
-	if res.Delta.Fails(threshold) {
+	if v.Failed {
 		verdict = "fail"
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(checkJSONReport{
-		Verdict:   verdict,
-		Threshold: threshold,
-		Result:    res,
+		Verdict:         verdict,
+		Reasons:         v.Reasons,
+		Threshold:       cfg.DeltaSMax,
+		ScalingClassMax: cfg.ScalingClassMax,
+		Result:          res,
 	})
 }
 
-func writeCheckTable(out io.Writer, res pipeline.CheckResult, threshold float64) error {
-	verdict := "PASS"
-	if res.Delta.Fails(threshold) {
-		verdict = "FAIL"
+func writeCheckTable(out io.Writer, res pipeline.CheckResult, cfg config.Config, v pipeline.Verdict) error {
+	label := "PASS"
+	if v.Failed {
+		label = "FAIL"
 	}
 	if _, err := fmt.Fprintf(out,
-		"%s  ΔS_total=%.4f  ΔS_density=%.4f  threshold=%.4f  lines_changed=%d  files=%d\n",
-		verdict, res.Delta.Total, res.Delta.Density, threshold, res.Delta.LinesChanged, len(res.Delta.Files),
+		"%s  ΔS_total=%.4f  ΔS_density=%.4f  threshold=%.4f  scaling_class=%s  lines_changed=%d  files=%d\n",
+		label, res.Delta.Total, res.Delta.Density, cfg.DeltaSMax,
+		res.Scaling.Class, res.Delta.LinesChanged, len(res.Delta.Files),
 	); err != nil {
+		return err
+	}
+	for _, reason := range v.Reasons {
+		if _, err := fmt.Fprintf(out, "  reason: %s\n", reason); err != nil {
+			return err
+		}
+	}
+	if err := writeScalingHits(out, res.Scaling); err != nil {
 		return err
 	}
 	if len(res.Delta.Files) == 0 {
@@ -136,6 +151,30 @@ func writeCheckTable(out io.Writer, res pipeline.CheckResult, threshold float64)
 		}
 	}
 	return tw.Flush()
+}
+
+// writeScalingHits prints one line per non-O(1) detector hit, so the
+// reader sees *why* the class is elevated. Skipped for empty results
+// (the skeleton-phase case in v0.2.0).
+func writeScalingHits(out io.Writer, r scaling.Result) error {
+	for _, f := range r.Files {
+		for _, h := range f.Hits {
+			if h.Class == scaling.ClassO1 {
+				continue
+			}
+			line := fmt.Sprintf("  scaling: %s %s in %s", h.Detector, h.Class, h.Path)
+			if h.Size > 0 {
+				line += fmt.Sprintf(" (size=%d)", h.Size)
+			}
+			if h.Evidence != "" {
+				line += " — " + h.Evidence
+			}
+			if _, err := fmt.Fprintln(out, line); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func init() {
