@@ -88,10 +88,10 @@ func TestParseClass_AcceptsBothNotations(t *testing.T) {
 }
 
 func TestAnalyze_EmptyRegistryYieldsO1(t *testing.T) {
-	got := Analyze([]gitx.Change{
+	got := Analyze(Input{Changes: []gitx.Change{
 		{Kind: gitx.ChangeModified, Path: "a.go"},
 		{Kind: gitx.ChangeAdded, Path: "b.go"},
-	})
+	}})
 	if got.Class != ClassO1 {
 		t.Errorf("Class = %v, want O(1)", got.Class)
 	}
@@ -113,8 +113,8 @@ type fakeDetector struct {
 	hits []Hit
 }
 
-func (f fakeDetector) Name() string                { return f.name }
-func (f fakeDetector) Analyze([]gitx.Change) []Hit { return f.hits }
+func (f fakeDetector) Name() string        { return f.name }
+func (f fakeDetector) Analyze(Input) []Hit { return f.hits }
 
 func TestAnalyzeWith_AggregatesHitsByMax(t *testing.T) {
 	detectors := []Detector{
@@ -122,10 +122,10 @@ func TestAnalyzeWith_AggregatesHitsByMax(t *testing.T) {
 		fakeDetector{name: "high", hits: []Hit{{Detector: "high", Class: ClassON, Path: "a.go"}}},
 		fakeDetector{name: "elsewhere", hits: []Hit{{Detector: "elsewhere", Class: ClassOk, Path: "b.go"}}},
 	}
-	got := AnalyzeWith(detectors, []gitx.Change{
+	got := AnalyzeWith(detectors, Input{Changes: []gitx.Change{
 		{Kind: gitx.ChangeModified, Path: "a.go"},
 		{Kind: gitx.ChangeModified, Path: "b.go"},
-	})
+	}})
 
 	if got.Class != ClassON {
 		t.Errorf("PR Class = %v, want O(n) (max of all per-file classes)", got.Class)
@@ -154,7 +154,7 @@ func TestAnalyzeWith_HitOnUntrackedPathStillSurfaces(t *testing.T) {
 	detectors := []Detector{
 		fakeDetector{name: "x", hits: []Hit{{Detector: "x", Class: ClassOk, Path: "untouched.go"}}},
 	}
-	got := AnalyzeWith(detectors, nil)
+	got := AnalyzeWith(detectors, Input{})
 	if len(got.Files) != 1 || got.Files[0].Path != "untouched.go" {
 		t.Fatalf("expected detector-only path to surface, got %+v", got.Files)
 	}
