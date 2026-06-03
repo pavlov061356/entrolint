@@ -11,28 +11,28 @@ import (
 // appended here (or injected via AnalyzeWith) as they land.
 var Registry []Detector
 
-func Analyze(changes []gitx.Change) Result {
-	return AnalyzeWith(Registry, changes)
+func Analyze(in Input) Result {
+	return AnalyzeWith(Registry, in)
 }
 
-// AnalyzeWith runs the given detector list against changes and
-// aggregates hits per file, then maxes file classes into the PR-level
-// class. Exposed so tests (and future plug-in registrations) can
-// inject a custom detector set without touching the global Registry.
-func AnalyzeWith(detectors []Detector, changes []gitx.Change) Result {
+// AnalyzeWith runs the given detector list against in and aggregates
+// hits per file, then maxes file classes into the PR-level class.
+// Exposed so tests (and future plug-in registrations) can inject a
+// custom detector set without touching the global Registry.
+func AnalyzeWith(detectors []Detector, in Input) Result {
 	hitsByPath := make(map[string][]Hit)
 	for _, d := range detectors {
-		for _, h := range d.Analyze(changes) {
+		for _, h := range d.Analyze(in) {
 			hitsByPath[h.Path] = append(hitsByPath[h.Path], h)
 		}
 	}
 
-	paths := make([]string, 0, len(changes))
-	for _, c := range changes {
+	paths := make([]string, 0, len(in.Changes))
+	for _, c := range in.Changes {
 		paths = append(paths, c.Path)
 	}
 	for p := range hitsByPath {
-		if _, ok := changePath(changes, p); !ok {
+		if _, ok := changePath(in.Changes, p); !ok {
 			paths = append(paths, p)
 		}
 	}

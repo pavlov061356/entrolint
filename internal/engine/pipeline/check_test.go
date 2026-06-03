@@ -18,11 +18,12 @@ import (
 // Any call shape the fake doesn't recognize fails the test — we want
 // the unhandled-shape signal loud, not silent.
 type fakeRunner struct {
-	t          *testing.T
-	resolved   map[string]string // rev -> sha
-	rawDiff    []byte
-	numstatOut []byte
-	blobs      map[string][]byte // "<ref>:<path>" -> content
+	t           *testing.T
+	resolved    map[string]string // rev -> sha
+	rawDiff     []byte
+	numstatOut  []byte
+	unifiedDiff []byte            // `git diff --unified=0 …` payload for DiffResult.Patches
+	blobs       map[string][]byte // "<ref>:<path>" -> content
 	// catFileErr lets a test force a specific error for a given
 	// "<ref>:<path>" key — used to exercise fatal-error propagation
 	// (e.g. gitx.ErrUnavailable firing mid-loop) without ad-hoc
@@ -42,16 +43,17 @@ func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 		}
 		return []byte(sha + "\n"), nil
 	case "diff":
-		// args[1]: "--raw" or "--numstat"
 		for _, a := range args {
 			switch a {
 			case "--raw":
 				return f.rawDiff, nil
 			case "--numstat":
 				return f.numstatOut, nil
+			case "--unified=0":
+				return f.unifiedDiff, nil
 			}
 		}
-		f.t.Fatalf("diff invocation with neither --raw nor --numstat: %v", args)
+		f.t.Fatalf("diff invocation with neither --raw nor --numstat nor --unified=0: %v", args)
 	case "cat-file":
 		// args: ["cat-file", "blob", "<ref>:<path>"]
 		key := args[2]
