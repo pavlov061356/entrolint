@@ -24,14 +24,12 @@ package implementorscan
 
 import (
 	"fmt"
-	"go/token"
 	"go/types"
-	"path/filepath"
-	"strings"
 
 	"golang.org/x/tools/go/packages"
 
 	"github.com/pavlov061356/entrolint/internal/scaling"
+	"github.com/pavlov061356/entrolint/internal/scaling/typesx"
 )
 
 const (
@@ -50,8 +48,6 @@ const (
 type Detector struct {
 	MinImplementors int
 	TouchedRatio    float64
-
-	loader loader
 }
 
 func New() *Detector {
@@ -67,7 +63,7 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 	if in.Root == "" {
 		return nil
 	}
-	pkgs, err := d.loader.load(in.Root)
+	pkgs, err := typesx.Default().Load(in.Root)
 	if err != nil || len(pkgs) == 0 {
 		// Soft-skip: a broken go.mod or missing module shouldn't fail
 		// the whole gate. shotgun and any future AST-only detectors
@@ -77,7 +73,7 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 
 	ctx := scanCtx{
 		pkgs:    pkgs,
-		changed: d.changedFileSet(in),
+		changed: typesx.ChangedFileSet(in),
 		seen:    make(map[*types.Interface]bool),
 		root:    in.Root,
 	}
@@ -166,29 +162,10 @@ func (c *scanCtx) maybeHit(pkg *packages.Package, scope *types.Scope, n string) 
 		Detector: name,
 		Class:    scaling.ClassOk,
 		Size:     len(impls),
-		Path:     relativize(c.root, pkg.Fset.Position(tn.Pos()).Filename),
+		Path:     typesx.Relativize(c.root, pkg.Fset.Position(tn.Pos()).Filename),
 		Evidence: fmt.Sprintf("%d of %d implementors of %s touched",
 			touched, len(impls), tn.Name()),
 	}, true
-}
-
-// changedFileSet builds the set of absolute paths git diff says were
-// changed (head-side). Detector compares this against the absolute
-// paths the type loader reports for implementor declarations, so both
-// sides need the same normalization.
-func (d *Detector) changedFileSet(in scaling.Input) map[string]bool {
-	out := make(map[string]bool, len(in.Changes))
-	for _, c := range in.Changes {
-		if !strings.HasSuffix(c.Path, ".go") {
-			continue
-		}
-		abs := c.Path
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(in.Root, c.Path)
-		}
-		out[filepath.Clean(abs)] = true
-	}
-	return out
 }
 
 func findImplementors(pkgs []*packages.Package, iface *types.Interface) []*types.Named {
@@ -271,11 +248,11 @@ func countTouched(pkgs []*packages.Package, impls []*types.Named, changed map[st
 // satisfies an interface entirely through Base's methods. Edits to
 // Base.go would otherwise silently fail to count S as touched.
 func hasChangedSite(pkgs []*packages.Package, named *types.Named, changed map[string]bool) bool {
-	pkg := findOwningPackage(pkgs, named.Obj())
+	pkg := typesx.FindOwningPackage(pkgs, named.Obj())
 	if pkg == nil {
 		return false
 	}
-	if posInChanged(pkg, named.Obj().Pos(), changed) {
+	if typesx.PosInChanged(pkg, named.Obj().Pos(), changed) {
 		return true
 	}
 	// Walk both value- and pointer-receiver method sets; embedded
@@ -295,46 +272,15 @@ func methodSetTouched(pkgs []*packages.Package, t types.Type, changed map[string
 		if !ok {
 			continue
 		}
-		fnPkg := findOwningPackage(pkgs, fn)
+		fnPkg := typesx.FindOwningPackage(pkgs, fn)
 		if fnPkg == nil {
 			continue
 		}
-		if posInChanged(fnPkg, fn.Pos(), changed) {
+		if typesx.PosInChanged(fnPkg, fn.Pos(), changed) {
 			return true
 		}
 	}
 	return false
-}
-
-func posInChanged(pkg *packages.Package, pos token.Pos, changed map[string]bool) bool {
-	p := pkg.Fset.Position(pos)
-	return p.IsValid() && changed[filepath.Clean(p.Filename)]
-}
-
-func findOwningPackage(pkgs []*packages.Package, obj types.Object) *packages.Package {
-	if obj == nil || obj.Pkg() == nil {
-		return nil
-	}
-	target := obj.Pkg().Path()
-	for _, p := range pkgs {
-		if p.Types != nil && p.Types.Path() == target {
-			return p
-		}
-	}
-	return nil
-}
-
-// relativize returns path relative to root, normalized. Falls back to
-// the absolute path if Rel fails (different volume on Windows, etc.).
-func relativize(root, path string) string {
-	if root == "" {
-		return path
-	}
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	return rel
 }
 
 func init() {

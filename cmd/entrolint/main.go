@@ -7,6 +7,7 @@ import (
 	// them in scaling.Registry before the CLI runs.
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/implementorscan"
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/shotgun"
+	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/switchsymmetry"
 )
 
 func main() {
