@@ -64,7 +64,7 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 	}
 
 	minSwitches, ratio := d.thresholds()
-	enums := collectEnums(pkgs)
+	enums := typesx.CollectEnums(pkgs)
 	if len(enums) == 0 {
 		return nil
 	}
@@ -113,53 +113,6 @@ func (d *Detector) thresholds() (int, float64) {
 // typesx.ChangedFileSet output directly.
 type switchSite struct {
 	filename string
-}
-
-// collectEnums returns named types in loaded packages that look like
-// Go enums: there are at least 2 *types.Const objects declared in the
-// same package whose type resolves to the named type. Generic named
-// types are skipped — types.Implements is undefined on them, and the
-// same generic-skipped policy applies here for consistency.
-func collectEnums(pkgs []*packages.Package) map[*types.Named]bool {
-	out := make(map[*types.Named]bool)
-	for _, pkg := range pkgs {
-		if pkg.Types == nil {
-			continue
-		}
-		consts := constByNamed(pkg)
-		for named, count := range consts {
-			if count < 2 {
-				continue
-			}
-			if named.TypeParams() != nil && named.TypeParams().Len() > 0 {
-				continue
-			}
-			out[named] = true
-		}
-	}
-	return out
-}
-
-func constByNamed(pkg *packages.Package) map[*types.Named]int {
-	out := make(map[*types.Named]int)
-	scope := pkg.Types.Scope()
-	for _, n := range scope.Names() {
-		c, ok := scope.Lookup(n).(*types.Const)
-		if !ok {
-			continue
-		}
-		// Unalias before the *types.Named assertion: under Go 1.23+
-		// `gotypesalias=1` (the default), `type AliasKind = Kind`
-		// surfaces a *types.Alias here, not a *types.Named, and the
-		// const would otherwise be silently dropped from the enum
-		// count.
-		named, ok := types.Unalias(c.Type()).(*types.Named)
-		if !ok {
-			continue
-		}
-		out[named]++
-	}
-	return out
 }
 
 // collectSwitches walks the syntax of every loaded package and records

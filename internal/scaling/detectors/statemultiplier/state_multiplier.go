@@ -6,18 +6,21 @@
 //  1. For every changed .go file with both base and head blobs,
 //     parse them with go/parser and pair their *ast.FuncDecl by
 //     (receiver type name, function name).
-//  2. For each pair where head has exactly one more parameter than
-//     base AND that new parameter's type is bool or an enum-like
-//     named type (>=2 const'ов своего типа в loaded packages),
-//     register a candidate.
-//  3. Count external call-sites via typesx (head graph). External =
-//     use site's *types.Package differs from def's. Fire O(2ⁿ) when
-//     external sites >= MinExternalSites.
+//  2. For each pair where head has exactly one more parameter
+//     appended at the end AND that new parameter's type is bool or
+//     an enum-like named type, look the function up in the type graph
+//     anchored at the changed file's owning package, then count
+//     cross-package uses. Fire O(2ⁿ) when external sites ≥ min.
 //
-// v0.2 simplification: the algorithm only catches the "appended
-// parameter" case. Reordered, replaced, or middle-inserted parameters
-// fall outside the heuristic and would need deeper signature diffing.
-// Documented in docs/scaling.md §"Известные упрощения".
+// v0.2 simplifications, documented in docs/scaling.md §"Известные
+// упрощения" item 11:
+//   - Only appended-at-end parameters are caught. Middle-insert,
+//     retype, and variadic Options are deferred.
+//   - typeKey is text-based: interface{} vs interface{F()} differ
+//     by method count only, structs by field count, etc. Subtle
+//     drift in earlier positions can still hide.
+//   - Interface methods (added to *ast.InterfaceType.Methods) are
+//     not yet diffed; only top-level *ast.FuncDecl pairs are walked.
 package statemultiplier
 
 import (
@@ -63,7 +66,7 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 	if err != nil || len(pkgs) == 0 {
 		return nil
 	}
-	enums := collectEnumTypeNames(pkgs)
+	enums := typesx.CollectEnums(pkgs)
 	minSites := d.MinExternalSites
 	if minSites < 1 {
 		minSites = DefaultMinExternalSites
@@ -76,12 +79,19 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 		if !hasBase || !hasHead {
 			continue
 		}
-		hits = append(hits, d.analyzeFile(c.Path, base, head, pkgs, enums, in.Root, minSites)...)
+		absPath := c.Path
+		owner := typesx.FindPackageByFile(pkgs, absPath)
+		if owner == nil {
+			// File isn't in any loaded package — typesx couldn't
+			// anchor it. Skip rather than risk a wrong-pkg lookup.
+			continue
+		}
+		hits = append(hits, d.analyzeFile(c.Path, base, head, pkgs, owner, enums, in.Root, minSites)...)
 	}
 	return hits
 }
 
-func (d *Detector) analyzeFile(path string, base, head []byte, pkgs []*packages.Package, enums map[string]bool, root string, minSites int) []scaling.Hit {
+func (d *Detector) analyzeFile(path string, base, head []byte, pkgs []*packages.Package, owner *packages.Package, enums map[*types.Named]bool, root string, minSites int) []scaling.Hit {
 	baseFile, ok := parseGo(path, base)
 	if !ok {
 		return nil
@@ -90,6 +100,7 @@ func (d *Detector) analyzeFile(path string, base, head []byte, pkgs []*packages.
 	if !ok {
 		return nil
 	}
+	enumNames := enumNamesVisibleTo(owner, enums)
 	baseFns := indexFuncDecls(baseFile)
 	headFns := indexFuncDecls(headFile)
 
@@ -99,11 +110,11 @@ func (d *Detector) analyzeFile(path string, base, head []byte, pkgs []*packages.
 		if !ok {
 			continue
 		}
-		added := addedStateParam(baseFn, headFn, enums)
+		added := addedStateParam(baseFn, headFn, enumNames)
 		if added == "" {
 			continue
 		}
-		sites := countExternalSites(pkgs, headFn.Name.Name, key.recv)
+		sites := countExternalSites(pkgs, owner, headFn.Name.Name, key.recv)
 		if sites < minSites {
 			continue
 		}
@@ -117,6 +128,28 @@ func (d *Detector) analyzeFile(path string, base, head []byte, pkgs []*packages.
 		})
 	}
 	return hits
+}
+
+// enumNamesVisibleTo flattens the *types.Named set down to the
+// short identifiers a stand-alone go/parser AST would have produced
+// for parameters in owner's scope. We include owner-declared enums by
+// their unqualified name, and enums imported into owner's scope by
+// the same unqualified name (`pkg.Kind` → "Kind", looked up via the
+// SelectorExpr branch of stateMultiplierKind).
+func enumNamesVisibleTo(owner *packages.Package, enums map[*types.Named]bool) map[string]bool {
+	out := make(map[string]bool, len(enums))
+	for n := range enums {
+		obj := n.Obj()
+		if obj == nil {
+			continue
+		}
+		// Owner-declared enum: short ident "Kind".
+		// Imported enum: matched by short ident on SelectorExpr.Sel.
+		if obj.Pkg() == owner.Types || obj.Exported() {
+			out[obj.Name()] = true
+		}
+	}
+	return out
 }
 
 // parseGo runs go/parser on the raw blob. Returns nil + false on any
@@ -189,9 +222,9 @@ func receiverTypeName(fn *ast.FuncDecl) string {
 }
 
 // addedStateParam returns a short description of the newly added
-// state-multiplying parameter (the type name) when head has exactly
-// one more parameter than base and that extra parameter is bool or
-// an enum-like named type. Returns "" otherwise.
+// state-multiplying parameter when head appends exactly one extra
+// parameter past base, that parameter is bool or an enum-like named
+// type, and the function is exported. Returns "" otherwise.
 func addedStateParam(baseFn, headFn *ast.FuncDecl, enums map[string]bool) string {
 	if !headFn.Name.IsExported() {
 		return ""
@@ -201,14 +234,8 @@ func addedStateParam(baseFn, headFn *ast.FuncDecl, enums map[string]bool) string
 	if len(headParams) != len(baseParams)+1 {
 		return ""
 	}
-	// Find the first position where the lists diverge; that's the
-	// added parameter. For the v0.2 MVP we only accept "appended at
-	// the end" — the simpler case that covers the bulk of real-world
-	// API growth.
+	// Prefix must match by shallow text comparison — v0.2 MVP.
 	for i, b := range baseParams {
-		if i >= len(headParams) {
-			return ""
-		}
 		if !sameTypeExpr(b, headParams[i]) {
 			return ""
 		}
@@ -236,9 +263,9 @@ func flattenParams(fn *ast.FuncDecl) []ast.Expr {
 }
 
 // stateMultiplierKind returns "bool" or "enum <TypeName>" if expr's
-// type qualifies as state-multiplying, "" otherwise. enums is the set
-// of named-type identifiers that have >=2 const'ов of their own type
-// in the loaded type graph.
+// type qualifies as state-multiplying, "" otherwise. Pointer-to-bool
+// and slice-of-bool are intentionally NOT state-multiplying — they
+// model nil-as-default and variadic options, not branching flags.
 func stateMultiplierKind(expr ast.Expr, enums map[string]bool) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -249,10 +276,7 @@ func stateMultiplierKind(expr ast.Expr, enums map[string]bool) string {
 			return "enum " + t.Name
 		}
 	case *ast.SelectorExpr:
-		// Qualified enum from an imported package: pkg.Kind. The enum
-		// map is keyed by unqualified identifier — this catches the
-		// common case where the enum is declared in the analyzed
-		// module.
+		// Qualified enum from an imported package: pkg.Kind.
 		if t.Sel != nil && enums[t.Sel.Name] {
 			return "enum " + t.Sel.Name
 		}
@@ -265,68 +289,130 @@ func sameTypeExpr(a, b ast.Expr) bool {
 }
 
 // typeKey produces a stable string for an ast.Expr suitable for
-// shallow equality on parameter types. Doesn't try to resolve
-// imports — same source spelling means same type for the MVP.
+// shallow equality on parameter types. Text-level rendering only —
+// doesn't resolve imports.
 func typeKey(expr ast.Expr) string {
-	switch t := expr.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		return "*" + typeKey(t.X)
-	case *ast.SelectorExpr:
-		return typeKey(t.X) + "." + t.Sel.Name
-	case *ast.ArrayType:
-		return "[]" + typeKey(t.Elt)
-	case *ast.MapType:
-		return "map[" + typeKey(t.Key) + "]" + typeKey(t.Value)
-	case *ast.Ellipsis:
-		return "..." + typeKey(t.Elt)
-	case *ast.InterfaceType:
-		return "interface{}"
-	case *ast.FuncType:
-		return "func(...)"
+	if s, ok := simpleTypeKey(expr); ok {
+		return s
+	}
+	if s, ok := compositeTypeKey(expr); ok {
+		return s
+	}
+	if s, ok := containerTypeKey(expr); ok {
+		return s
 	}
 	return fmt.Sprintf("%T", expr)
 }
 
-// collectEnumTypeNames returns the set of unqualified named-type
-// identifiers that have >=2 const'ов of their own type in the loaded
-// graph. Same definition switch_case_symmetry uses for "enum-like".
-func collectEnumTypeNames(pkgs []*packages.Package) map[string]bool {
-	counts := make(map[string]int)
-	for _, pkg := range pkgs {
-		if pkg.Types == nil {
-			continue
-		}
-		scope := pkg.Types.Scope()
-		for _, n := range scope.Names() {
-			c, ok := scope.Lookup(n).(*types.Const)
-			if !ok {
-				continue
-			}
-			named, ok := types.Unalias(c.Type()).(*types.Named)
-			if !ok {
-				continue
-			}
-			counts[named.Obj().Name()]++
-		}
+func simpleTypeKey(expr ast.Expr) (string, bool) {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name, true
+	case *ast.StarExpr:
+		return "*" + typeKey(t.X), true
+	case *ast.SelectorExpr:
+		return typeKey(t.X) + "." + t.Sel.Name, true
+	case *ast.ParenExpr:
+		return typeKey(t.X), true
+	case *ast.Ellipsis:
+		return "..." + typeKey(t.Elt), true
 	}
-	out := make(map[string]bool, len(counts))
-	for name, count := range counts {
-		if count >= 2 {
-			out[name] = true
+	return "", false
+}
+
+func compositeTypeKey(expr ast.Expr) (string, bool) {
+	switch t := expr.(type) {
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return "[]" + typeKey(t.Elt), true
 		}
+		return "[N]" + typeKey(t.Elt), true
+	case *ast.MapType:
+		return "map[" + typeKey(t.Key) + "]" + typeKey(t.Value), true
+	case *ast.ChanType:
+		return chanKey(t), true
+	case *ast.StructType:
+		return structKey(t), true
+	}
+	return "", false
+}
+
+func containerTypeKey(expr ast.Expr) (string, bool) {
+	switch t := expr.(type) {
+	case *ast.InterfaceType:
+		return interfaceKey(t), true
+	case *ast.FuncType:
+		return funcTypeKey(t), true
+	case *ast.IndexExpr:
+		return typeKey(t.X) + "[" + typeKey(t.Index) + "]", true
+	case *ast.IndexListExpr:
+		return typeKey(t.X) + "[" + indicesKey(t.Indices) + "]", true
+	}
+	return "", false
+}
+
+func chanKey(t *ast.ChanType) string {
+	dir := "chan "
+	switch t.Dir {
+	case ast.SEND:
+		dir = "chan<- "
+	case ast.RECV:
+		dir = "<-chan "
+	}
+	return dir + typeKey(t.Value)
+}
+
+func structKey(t *ast.StructType) string {
+	fields := 0
+	if t.Fields != nil {
+		fields = len(t.Fields.List)
+	}
+	return fmt.Sprintf("struct{%d}", fields)
+}
+
+// interfaceKey distinguishes empty interface{} from method-bearing
+// interface{Read()}: the method count keeps them from colliding in
+// sameTypeExpr (full method-set walk would be v0.3 work).
+func interfaceKey(t *ast.InterfaceType) string {
+	methods := 0
+	if t.Methods != nil {
+		methods = len(t.Methods.List)
+	}
+	return fmt.Sprintf("interface{%d}", methods)
+}
+
+func funcTypeKey(t *ast.FuncType) string {
+	params, results := 0, 0
+	if t.Params != nil {
+		params = len(t.Params.List)
+	}
+	if t.Results != nil {
+		results = len(t.Results.List)
+	}
+	return fmt.Sprintf("func(%d)(%d)", params, results)
+}
+
+func indicesKey(indices []ast.Expr) string {
+	parts := make([]string, 0, len(indices))
+	for _, idx := range indices {
+		parts = append(parts, typeKey(idx))
+	}
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += ","
+		}
+		out += p
 	}
 	return out
 }
 
 // countExternalSites walks loaded packages for uses of the target
 // function or method, counting only those whose use-site package
-// differs from the def's package. Method names disambiguate via
-// recvType: a method `(*Foo).Send` matches uses through any receiver
-// expression whose type is Foo.
-func countExternalSites(pkgs []*packages.Package, funcName, recvType string) int {
-	target := findFunc(pkgs, funcName, recvType)
+// differs from the def's package. owner is the package that owns the
+// edited file — used to resolve the target obj unambiguously.
+func countExternalSites(pkgs []*packages.Package, owner *packages.Package, funcName, recvType string) int {
+	target := findFunc(owner, funcName, recvType)
 	if target == nil || target.Pkg() == nil {
 		return 0
 	}
@@ -345,16 +431,15 @@ func countExternalSites(pkgs []*packages.Package, funcName, recvType string) int
 	return n
 }
 
-func findFunc(pkgs []*packages.Package, funcName, recvType string) *types.Func {
-	for _, pkg := range pkgs {
-		if pkg.Types == nil {
-			continue
-		}
-		if fn := lookupFunc(pkg.Types.Scope(), funcName, recvType); fn != nil {
-			return fn
-		}
+// findFunc looks up the target function or method in owner's scope
+// only — name-based lookup across all loaded packages would conflate
+// same-named functions across modules. owner is the *packages.Package
+// that owns the file containing the edited FuncDecl.
+func findFunc(owner *packages.Package, funcName, recvType string) *types.Func {
+	if owner == nil || owner.Types == nil {
+		return nil
 	}
-	return nil
+	return lookupFunc(owner.Types.Scope(), funcName, recvType)
 }
 
 func lookupFunc(scope *types.Scope, funcName, recvType string) *types.Func {

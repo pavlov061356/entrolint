@@ -365,3 +365,151 @@ func Caller() string { return api.Format("x") }
 		t.Errorf("rename without retype must not fire; got %d", len(hits))
 	}
 }
+
+func TestStateMultiplier_PointerToBoolNoFire(t *testing.T) {
+	// `*bool` parameter models tri-state (nil / false / true) — by
+	// the v0.2 policy that's an option, not a state-multiplying
+	// branch. Pin the no-fire so a future refactor of
+	// stateMultiplierKind doesn't accidentally flip it.
+	base := `package api
+
+func Format(s string) string { return s }
+`
+	head := `package api
+
+func Format(s string, legacy *bool) string { return s }
+`
+	_, in := scenario(t, base, head, 3, func(i int) string {
+		return fmt.Sprintf(`package use%d
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", nil) }
+`, i)
+	})
+	if hits := New().Analyze(in); len(hits) != 0 {
+		t.Errorf("*bool must not be state-multiplying; got %d hits", len(hits))
+	}
+}
+
+func TestStateMultiplier_UnparseableBaseSoftSkips(t *testing.T) {
+	// Legit-broken Go in the base blob — parser fails, analyzeFile
+	// returns nil for the file, no panic, no fire.
+	root := fixture(t, map[string]string{
+		"api/api.go": "package api\n\nfunc Format(s string, legacy bool) string { return s }\n",
+		"use0/use.go": `package use0
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", false) }
+`,
+		"use1/use.go": `package use1
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", true) }
+`,
+	})
+	broken := []byte("package api\nfunc Format(") // unparseable
+	in := scaling.Input{
+		Root:      root,
+		Changes:   []gitx.Change{{Kind: gitx.ChangeModified, Path: "api/api.go"}},
+		BaseBlobs: map[string][]byte{"api/api.go": broken},
+		HeadBlobs: map[string][]byte{"api/api.go": []byte("package api\n\nfunc Format(s string, legacy bool) string { return s }\n")},
+	}
+	if hits := New().Analyze(in); len(hits) != 0 {
+		t.Errorf("unparseable base blob must soft-skip; got %d hits", len(hits))
+	}
+}
+
+func TestStateMultiplier_CrossPackageFuncNameCollisionResolved(t *testing.T) {
+	// Two packages both declare `func Format(s string) string`. Only
+	// pkg api gets +bool. countExternalSites must anchor on the file
+	// path (api/api.go) and count only uses of api.Format, NOT uses
+	// of util.Format (which exists in other pkg but didn't change).
+	files := map[string]string{
+		"go.mod":     "module example.com/probe\n\ngo 1.21\n",
+		"api/api.go": "package api\n\nfunc Format(s string, legacy bool) string { return s }\n",
+		"util/util.go": `package util
+
+func Format(s string) string { return s + "!" }
+`,
+		"use0/use.go": `package use0
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", false) }
+`,
+		"use1/use.go": `package use1
+
+import (
+	"example.com/probe/api"
+	"example.com/probe/util"
+)
+
+func Caller() string { return api.Format("x", false) + util.Format("y") }
+`,
+		"use2/use.go": `package use2
+
+import "example.com/probe/util"
+
+// Calls util.Format ONLY — must NOT count toward state_multiplier's
+// hit on api.Format.
+func Caller() string { return util.Format("z") }
+`,
+	}
+	dir := fixture(t, files)
+	in := scaling.Input{
+		Root:      dir,
+		Changes:   []gitx.Change{{Kind: gitx.ChangeModified, Path: "api/api.go"}},
+		BaseBlobs: map[string][]byte{"api/api.go": []byte("package api\n\nfunc Format(s string) string { return s }\n")},
+		HeadBlobs: map[string][]byte{"api/api.go": []byte(files["api/api.go"])},
+	}
+	hits := New().Analyze(in)
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit anchored on api.Format, got %d: %+v", len(hits), hits)
+	}
+	if hits[0].Size != 2 {
+		t.Errorf("Size = %d, want 2 (use0 + use1; use2 calls util.Format only)", hits[0].Size)
+	}
+}
+
+func TestStateMultiplier_InternalCallersExcluded(t *testing.T) {
+	// 2 external callers + 1 internal caller. The internal caller
+	// MUST NOT count: Size == 2, not 3.
+	files := map[string]string{
+		"go.mod": "module example.com/probe\n\ngo 1.21\n",
+		"api/api.go": `package api
+
+func Format(s string, legacy bool) string { return s }
+
+func internalCaller() string { return Format("x", false) }
+`,
+		"use0/use.go": `package use0
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", false) }
+`,
+		"use1/use.go": `package use1
+
+import "example.com/probe/api"
+
+func Caller() string { return api.Format("x", true) }
+`,
+	}
+	dir := fixture(t, files)
+	in := scaling.Input{
+		Root:      dir,
+		Changes:   []gitx.Change{{Kind: gitx.ChangeModified, Path: "api/api.go"}},
+		BaseBlobs: map[string][]byte{"api/api.go": []byte("package api\n\nfunc Format(s string) string { return s }\n")},
+		HeadBlobs: map[string][]byte{"api/api.go": []byte(files["api/api.go"])},
+	}
+	hits := New().Analyze(in)
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(hits))
+	}
+	if hits[0].Size != 2 {
+		t.Errorf("Size = %d, want 2 (internal caller excluded)", hits[0].Size)
+	}
+}

@@ -42,14 +42,6 @@ type CheckResult struct {
 	Skipped []gitx.SkippedPath `json:"skipped,omitempty"`
 }
 
-// errSoftMiss marks scoreBlob failures the scorer should silently skip
-// — file not present at ref (legitimate for the opposite side of Add /
-// Remove) or syntactically broken Go (S is undefined for the ref). Any
-// other error from scoreBlob is fatal: gitx.ErrUnavailable, ErrInvalidRef
-// and the like mean the gate's verdict would be computed from a
-// partial corpus, which is more dangerous than failing the run.
-var errSoftMiss = errors.New("pipeline: soft miss")
-
 // Check computes ΔS between base and head and aggregates it into a
 // thermo.Delta the CLI can gate on. v0.1 scores Go files only —
 // non-`.go` paths in the diff are silently excluded from both Total
@@ -85,16 +77,18 @@ func Check(opts CheckOptions) (CheckResult, error) {
 		return CheckResult{}, fmt.Errorf("diff %s...%s: %w", baseSHA, headSHA, err)
 	}
 
+	baseBlobs, headBlobs, err := fetchAllBlobs(runner, diff.Files, baseSHA, headSHA)
+	if err != nil {
+		return CheckResult{}, fmt.Errorf("fetch blobs %s...%s: %w", baseSHA, headSHA, err)
+	}
+
 	fileDeltas := make([]thermo.FileDelta, 0, len(diff.Files))
 	linesChanged := 0
 	for _, c := range diff.Files {
 		if !isGoPath(c) {
 			continue
 		}
-		fd, ok, err := scoreChange(runner, engine, baseSHA, headSHA, c)
-		if err != nil {
-			return CheckResult{}, fmt.Errorf("score %s: %w", c.Path, err)
-		}
+		fd, ok := scoreFromCache(engine, baseBlobs, headBlobs, c)
 		if !ok {
 			continue
 		}
@@ -106,7 +100,6 @@ func Check(opts CheckOptions) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("patches %s...%s: %w", baseSHA, headSHA, err)
 	}
-	baseBlobs, headBlobs := collectBlobs(runner, diff.Files, baseSHA, headSHA)
 	scalingResult := scaling.Analyze(scaling.Input{
 		Changes:   diff.Files,
 		Patches:   patches,
@@ -128,44 +121,99 @@ func Check(opts CheckOptions) (CheckResult, error) {
 	}, nil
 }
 
-// collectBlobs fetches base and head .go file contents for every
-// change in diff, returning the two per-path maps that scaling.Input
-// carries. Fetch errors are swallowed — a missing blob simply absents
-// the file from the corresponding map, and any detector that needs
-// both sides treats it as soft-skip. Non-Go paths are filtered.
-func collectBlobs(runner gitx.Runner, files []gitx.Change, baseSHA, headSHA string) (map[string][]byte, map[string][]byte) {
+// fetchAllBlobs pulls every `.go` change's base and head content in a
+// single pass and returns the two per-path maps that thermo scoring
+// and scaling detectors both consume. Fatal errors (ErrUnavailable,
+// ErrInvalidRef, etc.) propagate — silently dropping the blob would
+// hand thermo and scaling a partial corpus and produce an unsafe
+// verdict. The only swallowed case is ErrNotAtRef on a side that
+// might legitimately be absent (a rename's OldPath after the tree
+// pruned, or a mid-rebase missing blob); we treat that as soft and
+// the consumer drops the file from its result.
+func fetchAllBlobs(runner gitx.Runner, files []gitx.Change, baseSHA, headSHA string) (map[string][]byte, map[string][]byte, error) {
 	baseBlobs := make(map[string][]byte)
 	headBlobs := make(map[string][]byte)
 	for _, c := range files {
 		if !isGoPath(c) {
 			continue
 		}
-		fetchBase(runner, c, baseSHA, baseBlobs)
-		fetchHead(runner, c, headSHA, headBlobs)
+		if err := fetchSide(runner, c.Kind != gitx.ChangeAdded, baseSHA, basePath(c), c.Path, baseBlobs); err != nil {
+			return nil, nil, err
+		}
+		if err := fetchSide(runner, c.Kind != gitx.ChangeRemoved, headSHA, c.Path, c.Path, headBlobs); err != nil {
+			return nil, nil, err
+		}
 	}
-	return baseBlobs, headBlobs
+	return baseBlobs, headBlobs, nil
 }
 
-func fetchBase(runner gitx.Runner, c gitx.Change, baseSHA string, into map[string][]byte) {
-	if c.Kind == gitx.ChangeAdded {
-		return
-	}
-	basePath := c.Path
+func basePath(c gitx.Change) string {
 	if c.Kind == gitx.ChangeRenamed && c.OldPath != "" {
-		basePath = c.OldPath
+		return c.OldPath
 	}
-	if blob, err := gitx.FileAtRef(runner, baseSHA, basePath); err == nil {
-		into[c.Path] = blob
+	return c.Path
+}
+
+// fetchSide pulls one blob and stores it in `into` keyed by `key`.
+// `want=false` skips the fetch entirely (used when the side does not
+// exist for this change Kind). ErrNotAtRef is soft (blob simply
+// absent); anything else is fatal.
+func fetchSide(runner gitx.Runner, want bool, ref, path, key string, into map[string][]byte) error {
+	if !want {
+		return nil
+	}
+	blob, err := gitx.FileAtRef(runner, ref, path)
+	if err != nil {
+		if errors.Is(err, gitx.ErrNotAtRef) {
+			return nil
+		}
+		return err
+	}
+	into[key] = blob
+	return nil
+}
+
+// scoreFromCache turns a single diff entry into a thermo.FileDelta
+// using the pre-fetched blob maps. Returns ok=false when the change
+// should be silently excluded (parse failure on either side of a
+// Modified/Renamed entry — the asymmetry would otherwise read as a
+// fake refactor).
+func scoreFromCache(e *thermo.Engine, baseBlobs, headBlobs map[string][]byte, c gitx.Change) (thermo.FileDelta, bool) {
+	switch c.Kind {
+	case gitx.ChangeAdded:
+		s, ok := scoreBlob(e, headBlobs[c.Path], c.Path)
+		if !ok {
+			return thermo.FileDelta{}, false
+		}
+		return thermo.MakeFileDelta(c.Path, thermo.DeltaAdded, 0, s), true
+	case gitx.ChangeRemoved:
+		s, ok := scoreBlob(e, baseBlobs[c.Path], c.Path)
+		if !ok {
+			return thermo.FileDelta{}, false
+		}
+		return thermo.MakeFileDelta(c.Path, thermo.DeltaRemoved, s, 0), true
+	default: // ChangeModified or ChangeRenamed
+		sBase, okB := scoreBlob(e, baseBlobs[c.Path], c.Path)
+		sHead, okH := scoreBlob(e, headBlobs[c.Path], c.Path)
+		if !okB || !okH {
+			return thermo.FileDelta{}, false
+		}
+		return thermo.MakeFileDelta(c.Path, thermo.DeltaModified, sBase, sHead), true
 	}
 }
 
-func fetchHead(runner gitx.Runner, c gitx.Change, headSHA string, into map[string][]byte) {
-	if c.Kind == gitx.ChangeRemoved {
-		return
+// scoreBlob parses + scores a single blob. ok=false means the blob is
+// missing or unparseable — both treated identically by ComputeDelta
+// callers per the symmetric soft-miss rule.
+func scoreBlob(e *thermo.Engine, blob []byte, path string) (float64, bool) {
+	if len(blob) == 0 {
+		return 0, false
 	}
-	if blob, err := gitx.FileAtRef(runner, headSHA, c.Path); err == nil {
-		into[c.Path] = blob
+	f, ok := golang.ParseGoBytes(path, blob)
+	if !ok {
+		return 0, false
 	}
+	return e.Score(f).S, true
 }
 
 // applyScalingBonus folds the (always-negative) downgrade reward into
@@ -193,98 +241,6 @@ func calibrateForCheck(opts CheckOptions) (*thermo.Engine, error) {
 		return nil, fmt.Errorf("calibration tree walk: %w", err)
 	}
 	return resolveEngine(scanOpts, structuralMicrostates(), files), nil
-}
-
-// scoreChange turns a single diff entry into a thermo.FileDelta.
-//
-// Return shape: (delta, ok, err). err != nil means a fatal upstream
-// failure (git binary unavailable, ref lost mid-run) — the caller must
-// propagate it. ok=false with nil err means the change should be
-// silently excluded (one side parsed-failed, file not present at the
-// canonical ref, etc.). For Modified/Renamed the rule is symmetric:
-// EITHER side soft-missing drops the change rather than emit a
-// half-measured Δ that defeats the gate (a parseable base + broken
-// head would otherwise read as a beneficial refactor of -sBase).
-func scoreChange(runner gitx.Runner, e *thermo.Engine, baseSHA, headSHA string, c gitx.Change) (thermo.FileDelta, bool, error) {
-	switch c.Kind {
-	case gitx.ChangeAdded:
-		sHead, err := scoreBlob(runner, e, headSHA, c.Path)
-		if err != nil {
-			return thermo.FileDelta{}, false, softOrFatal(err)
-		}
-		return thermo.MakeFileDelta(c.Path, thermo.DeltaAdded, 0, sHead), true, nil
-	case gitx.ChangeRemoved:
-		sBase, err := scoreBlob(runner, e, baseSHA, c.Path)
-		if err != nil {
-			return thermo.FileDelta{}, false, softOrFatal(err)
-		}
-		return thermo.MakeFileDelta(c.Path, thermo.DeltaRemoved, sBase, 0), true, nil
-	case gitx.ChangeRenamed:
-		return finalizeModified(c.Path, runner, e, baseSHA, c.OldPath, headSHA, c.Path)
-	default: // ChangeModified (and any unrecognized kind)
-		return finalizeModified(c.Path, runner, e, baseSHA, c.Path, headSHA, c.Path)
-	}
-}
-
-// finalizeModified scores both sides of a Modified/Renamed entry. A
-// fatal error on either side propagates; a soft miss on either side
-// drops the entry — matching the symmetry the Add/Remove branches have
-// for free.
-func finalizeModified(reportPath string, runner gitx.Runner, e *thermo.Engine, baseSHA, basePath, headSHA, headPath string) (thermo.FileDelta, bool, error) {
-	sBase, errB := scoreBlob(runner, e, baseSHA, basePath)
-	sHead, errH := scoreBlob(runner, e, headSHA, headPath)
-	if err := fatalOf(errB, errH); err != nil {
-		return thermo.FileDelta{}, false, err
-	}
-	if errB != nil || errH != nil {
-		return thermo.FileDelta{}, false, nil
-	}
-	return thermo.MakeFileDelta(reportPath, thermo.DeltaModified, sBase, sHead), true, nil
-}
-
-// softOrFatal returns nil for a soft miss (drop the change) and the
-// original error otherwise (propagate as fatal). Used by Add/Remove
-// branches that only score one side.
-func softOrFatal(err error) error {
-	if errors.Is(err, errSoftMiss) {
-		return nil
-	}
-	return err
-}
-
-// fatalOf returns the first non-soft error among the two, or nil if
-// both are nil or both are soft misses.
-func fatalOf(errs ...error) error {
-	for _, err := range errs {
-		if err != nil && !errors.Is(err, errSoftMiss) {
-			return err
-		}
-	}
-	return nil
-}
-
-// scoreBlob fetches `ref:path` and returns the structural entropy S of
-// that file under the calibrated engine.
-//
-// Error contract: nil → use the returned S. errSoftMiss → the change
-// should be silently excluded (file legitimately absent at ref, or
-// blob is syntactically broken Go and has no defined S). Anything else
-// is fatal (git binary went away mid-loop, shallow clone lost a
-// resolved SHA, ...) — the caller must propagate it to the user so the
-// gate does not ship a verdict computed from a partial corpus.
-func scoreBlob(runner gitx.Runner, e *thermo.Engine, ref, path string) (float64, error) {
-	blob, err := gitx.FileAtRef(runner, ref, path)
-	if err != nil {
-		if errors.Is(err, gitx.ErrNotAtRef) {
-			return 0, errSoftMiss
-		}
-		return 0, err
-	}
-	f, ok := golang.ParseGoBytes(path, blob)
-	if !ok {
-		return 0, errSoftMiss
-	}
-	return e.Score(f).S, nil
 }
 
 // isGoPath gates which diff entries enter ΔS — only `.go` paths under
