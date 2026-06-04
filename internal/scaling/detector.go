@@ -21,6 +21,15 @@ type Input struct {
 	// Empty string is a valid default for tests that hand-build Input
 	// and don't exercise the typed code path.
 	Root string
+	// BaseBlobs and HeadBlobs are the raw `.go` file contents at the
+	// base and head refs, keyed by the same path the Change uses
+	// (head-side path for Modified/Added, base-side for Removed).
+	// Pipeline already fetches both via gitx.FileAtRef for the thermo
+	// score and stores them here so detectors that need a base/head
+	// AST diff (state_multiplier) don't have to re-fetch. Either map
+	// can be empty without breaking other detectors.
+	BaseBlobs map[string][]byte
+	HeadBlobs map[string][]byte
 }
 
 // Hit is one detector firing on one site. Size is the architectural

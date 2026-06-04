@@ -708,3 +708,31 @@ func TestCheck_VendorPathExcluded(t *testing.T) {
 		t.Errorf("LinesChanged = %d, want 3 (vendor/dep/x.go must be excluded)", res.Delta.LinesChanged)
 	}
 }
+
+func TestFetchAllBlobs_PropagatesFatalErrors(t *testing.T) {
+	// ErrUnavailable while fetching blobs is fatal — pipeline.Check
+	// must surface it, not silently drop the blob from the maps.
+	// This pins the contract that fetchAllBlobs propagates while
+	// scoring on cached blobs.
+	dir := t.TempDir()
+	writeTree(t, dir, calibrationCorpus())
+	fr := &fakeRunner{
+		t: t,
+		resolved: map[string]string{
+			"base": "1111111111111111111111111111111111111111",
+			"head": "2222222222222222222222222222222222222222",
+		},
+		rawDiff:    []byte(rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "x.go", "")),
+		numstatOut: []byte(numRecord(5, 5, "x.go", "")),
+		catFileErr: map[string]error{
+			"1111111111111111111111111111111111111111:x.go": fmt.Errorf("%w: simulated git crash", gitx.ErrUnavailable),
+		},
+	}
+	_, err := runCheck(t, dir, fr)
+	if err == nil {
+		t.Fatal("expected fatal ErrUnavailable from base-side fetch, got nil")
+	}
+	if !errors.Is(err, gitx.ErrUnavailable) {
+		t.Errorf("expected ErrUnavailable in chain, got %v", err)
+	}
+}

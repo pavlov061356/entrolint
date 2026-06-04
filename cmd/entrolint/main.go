@@ -8,6 +8,7 @@ import (
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/identifierfanout"
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/implementorscan"
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/shotgun"
+	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/statemultiplier"
 	_ "github.com/pavlov061356/entrolint/internal/scaling/detectors/switchsymmetry"
 )
 
