@@ -106,10 +106,13 @@ func Check(opts CheckOptions) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("patches %s...%s: %w", baseSHA, headSHA, err)
 	}
+	baseBlobs, headBlobs := collectBlobs(runner, diff.Files, baseSHA, headSHA)
 	scalingResult := scaling.Analyze(scaling.Input{
-		Changes: diff.Files,
-		Patches: patches,
-		Root:    rootAbs,
+		Changes:   diff.Files,
+		Patches:   patches,
+		Root:      rootAbs,
+		BaseBlobs: baseBlobs,
+		HeadBlobs: headBlobs,
 	})
 	delta := thermo.ComputeDelta(fileDeltas, linesChanged)
 	if scalingResult.DowngradeBonus != 0 {
@@ -123,6 +126,46 @@ func Check(opts CheckOptions) (CheckResult, error) {
 		Scaling: scalingResult,
 		Skipped: diff.Skipped,
 	}, nil
+}
+
+// collectBlobs fetches base and head .go file contents for every
+// change in diff, returning the two per-path maps that scaling.Input
+// carries. Fetch errors are swallowed — a missing blob simply absents
+// the file from the corresponding map, and any detector that needs
+// both sides treats it as soft-skip. Non-Go paths are filtered.
+func collectBlobs(runner gitx.Runner, files []gitx.Change, baseSHA, headSHA string) (map[string][]byte, map[string][]byte) {
+	baseBlobs := make(map[string][]byte)
+	headBlobs := make(map[string][]byte)
+	for _, c := range files {
+		if !isGoPath(c) {
+			continue
+		}
+		fetchBase(runner, c, baseSHA, baseBlobs)
+		fetchHead(runner, c, headSHA, headBlobs)
+	}
+	return baseBlobs, headBlobs
+}
+
+func fetchBase(runner gitx.Runner, c gitx.Change, baseSHA string, into map[string][]byte) {
+	if c.Kind == gitx.ChangeAdded {
+		return
+	}
+	basePath := c.Path
+	if c.Kind == gitx.ChangeRenamed && c.OldPath != "" {
+		basePath = c.OldPath
+	}
+	if blob, err := gitx.FileAtRef(runner, baseSHA, basePath); err == nil {
+		into[c.Path] = blob
+	}
+}
+
+func fetchHead(runner gitx.Runner, c gitx.Change, headSHA string, into map[string][]byte) {
+	if c.Kind == gitx.ChangeRemoved {
+		return
+	}
+	if blob, err := gitx.FileAtRef(runner, headSHA, c.Path); err == nil {
+		into[c.Path] = blob
+	}
 }
 
 // applyScalingBonus folds the (always-negative) downgrade reward into
