@@ -51,12 +51,15 @@ type ScanResult struct {
 	Files []FileScore `json:"files"`
 }
 
-// structuralMicrostates lists v0.1 contributors to S (churn lives only in T).
+// structuralMicrostates lists the contributors to S (churn lives only in T).
+// v0.1: cyclomatic, nesting, length. v0.3 adds coupling (per-file import count
+// as efferent-coupling proxy — full Ca/Ce graph deferred).
 func structuralMicrostates() []microstate.Microstate {
 	return []microstate.Microstate{
 		microstate.Cyclomatic{},
 		microstate.Nesting{},
 		microstate.Length{},
+		microstate.Coupling{},
 	}
 }
 

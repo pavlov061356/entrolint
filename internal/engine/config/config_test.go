@@ -10,7 +10,7 @@ import (
 
 func TestDefault_ContainsExpectedFields(t *testing.T) {
 	d := Default()
-	wantWeights := map[string]float64{"cyclomatic": 1.0, "nesting": 0.8, "length": 0.5}
+	wantWeights := map[string]float64{"cyclomatic": 1.0, "nesting": 0.8, "coupling": 0.6, "length": 0.5}
 	for k, v := range wantWeights {
 		if got := d.Weights[k]; got != v {
 			t.Errorf("Default Weights[%q] = %v, want %v", k, got, v)

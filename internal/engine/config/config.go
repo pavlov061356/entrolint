@@ -39,12 +39,13 @@ type Config struct {
 	ScalingBonusBeta float64 `yaml:"scaling_bonus_beta"`
 }
 
-// Default returns the v0.2 baked-in configuration.
+// Default returns the v0.3 baked-in configuration.
 func Default() Config {
 	return Config{
 		Weights: map[string]float64{
 			"cyclomatic": 1.0,
 			"nesting":    0.8,
+			"coupling":   0.6,
 			"length":     0.5,
 		},
 		DeltaSMax:        0.05,
