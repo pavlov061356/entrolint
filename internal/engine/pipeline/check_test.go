@@ -18,11 +18,12 @@ import (
 // Any call shape the fake doesn't recognize fails the test — we want
 // the unhandled-shape signal loud, not silent.
 type fakeRunner struct {
-	t          *testing.T
-	resolved   map[string]string // rev -> sha
-	rawDiff    []byte
-	numstatOut []byte
-	blobs      map[string][]byte // "<ref>:<path>" -> content
+	t           *testing.T
+	resolved    map[string]string // rev -> sha
+	rawDiff     []byte
+	numstatOut  []byte
+	unifiedDiff []byte            // `git diff --unified=0 …` payload for DiffResult.Patches
+	blobs       map[string][]byte // "<ref>:<path>" -> content
 	// catFileErr lets a test force a specific error for a given
 	// "<ref>:<path>" key — used to exercise fatal-error propagation
 	// (e.g. gitx.ErrUnavailable firing mid-loop) without ad-hoc
@@ -42,16 +43,17 @@ func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 		}
 		return []byte(sha + "\n"), nil
 	case "diff":
-		// args[1]: "--raw" or "--numstat"
 		for _, a := range args {
 			switch a {
 			case "--raw":
 				return f.rawDiff, nil
 			case "--numstat":
 				return f.numstatOut, nil
+			case "--unified=0":
+				return f.unifiedDiff, nil
 			}
 		}
-		f.t.Fatalf("diff invocation with neither --raw nor --numstat: %v", args)
+		f.t.Fatalf("diff invocation with neither --raw nor --numstat nor --unified=0: %v", args)
 	case "cat-file":
 		// args: ["cat-file", "blob", "<ref>:<path>"]
 		key := args[2]
@@ -704,5 +706,33 @@ func TestCheck_VendorPathExcluded(t *testing.T) {
 	}
 	if res.Delta.LinesChanged != 3 {
 		t.Errorf("LinesChanged = %d, want 3 (vendor/dep/x.go must be excluded)", res.Delta.LinesChanged)
+	}
+}
+
+func TestFetchAllBlobs_PropagatesFatalErrors(t *testing.T) {
+	// ErrUnavailable while fetching blobs is fatal — pipeline.Check
+	// must surface it, not silently drop the blob from the maps.
+	// This pins the contract that fetchAllBlobs propagates while
+	// scoring on cached blobs.
+	dir := t.TempDir()
+	writeTree(t, dir, calibrationCorpus())
+	fr := &fakeRunner{
+		t: t,
+		resolved: map[string]string{
+			"base": "1111111111111111111111111111111111111111",
+			"head": "2222222222222222222222222222222222222222",
+		},
+		rawDiff:    []byte(rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "x.go", "")),
+		numstatOut: []byte(numRecord(5, 5, "x.go", "")),
+		catFileErr: map[string]error{
+			"1111111111111111111111111111111111111111:x.go": fmt.Errorf("%w: simulated git crash", gitx.ErrUnavailable),
+		},
+	}
+	_, err := runCheck(t, dir, fr)
+	if err == nil {
+		t.Fatal("expected fatal ErrUnavailable from base-side fetch, got nil")
+	}
+	if !errors.Is(err, gitx.ErrUnavailable) {
+		t.Errorf("expected ErrUnavailable in chain, got %v", err)
 	}
 }

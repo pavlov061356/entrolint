@@ -45,23 +45,29 @@
 - Опционально: приватный образ в GHCR `ghcr.io/<user>/entrolint:<tag>` для
   использования из чужих CI-пайплайнов без сборки из исходников.
 
-## v0.2 — Predictive layer (scaling class)
+## v0.2 — Predictive layer (scaling class) ✅
+
+Релиз 2026-06-04. Тег `v0.2.0` на master.
 
 **Цель:** дать предсказательную метрику поверх описательной. PR получает
 **два** ответа: «насколько грязнее сейчас» и «сколько будет стоить
 следующее похожее изменение».
 
-- Пакет `internal/scaling/` — детектирование O-классов из диффа.
-- Использование `go/types` для `references(symbol)` и поиска реализаций
-  интерфейсов.
-- Эвристики: identifier fan-out, implementor scan, switch/case symmetry,
-  state multiplier, shotgun pattern.
-- Награда за `class downgrade` — отрицательный вклад в ΔS, когда PR убирает
-  структурную связь.
-- Аннотация `// entrolint:scaling=O(implementors) reason="..."` — оправданные
-  исключения остаются видимыми, но не штрафуются.
-- Расширение отчёта `check`: к `ΔS` добавляется строка `Scaling class` и
-  прогноз стоимости следующей итерации.
+- ✅ Пакет `internal/scaling/` — детектирование O-классов из диффа,
+  общий `typesx` helper (Loader, FindOwningPackage, FindPackageByFile,
+  CollectEnums, ChangedFileSet, PosInChanged, Relativize).
+- ✅ Использование `go/types` через `golang.org/x/tools/go/packages` —
+  поиск реализаций интерфейсов и cross-package references.
+- ✅ Эвристики: `shotgun`, `implementor_scan`, `switch_case_symmetry`,
+  `identifier_fanout`, `state_multiplier`. Каталог и упрощения v0.2 —
+  `docs/scaling.md`.
+- ✅ Расширение отчёта `check`: к `ΔS` добавляется строка `scaling_class`
+  (max по сработавшим детекторам) — и в текстовом, и в JSON-выводе.
+- ⏭ Награда за `class downgrade` — отрицательный вклад в ΔS — отложено
+  до v0.3: требует базовой O-классификации, которая стабилизируется на
+  данных v0.2.
+- ⏭ Аннотация `// entrolint:scaling=O(implementors) reason="..."` —
+  отложено до v0.3 после первой обратной связи на ложные срабатывания.
 
 ## v0.3 — Coupling & duplication
 

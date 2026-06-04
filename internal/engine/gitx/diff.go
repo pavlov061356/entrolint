@@ -120,10 +120,13 @@ func (r *SkipReason) UnmarshalJSON(data []byte) error {
 }
 
 // DiffResult is the typed output of Diff. Files plus Skipped together
-// account for every path git reported.
+// account for every path git reported. rng is the base...head range
+// the result was built from — Patches uses it to fetch hunks without
+// the caller re-passing the refs.
 type DiffResult struct {
 	Files   []Change
 	Skipped []SkippedPath
+	rng     string
 }
 
 var (
@@ -153,7 +156,58 @@ func Diff(r Runner, base, head string) (DiffResult, error) {
 	if err != nil {
 		return DiffResult{}, wrapDiffErr(err)
 	}
-	return mergeDiff(parseRaw(rawOut), parseNumstat(numOut)), nil
+	res := mergeDiff(parseRaw(rawOut), parseNumstat(numOut))
+	res.rng = rng
+	return res, nil
+}
+
+// Patches returns the unified-0 patch body for every changed file in
+// this DiffResult, keyed by head-side path (or base-side for pure
+// deletions, where the head side is /dev/null). Skipped paths from
+// the raw diff don't appear here. Detectors that need the actual
+// added/removed lines (e.g. shotgun) call this — others stay on the
+// metadata-only DiffResult.Files.
+//
+// Returns ErrUnavailable wrapped when git can't run.
+func (d DiffResult) Patches(r Runner) (map[string][]byte, error) {
+	if d.rng == "" {
+		return nil, errors.New("gitx: DiffResult was not produced by Diff()")
+	}
+	out, err := r.Run("diff", "--unified=0", "--no-color", "-M50", d.rng)
+	if err != nil {
+		return nil, wrapDiffErr(err)
+	}
+	return splitPatchesByFile(out), nil
+}
+
+// splitPatchesByFile carves a raw `git diff` payload into per-file
+// chunks. Each `diff --git a/<src> b/<dst>` line opens a new entry;
+// the chunk body is everything until the next such line. Deletions
+// key on the base-side path because b/<dst> is `/dev/null`.
+func splitPatchesByFile(data []byte) map[string][]byte {
+	out := make(map[string][]byte)
+	chunks := strings.Split("\n"+string(data), "\ndiff --git ")
+	for _, chunk := range chunks[1:] {
+		nl := strings.IndexByte(chunk, '\n')
+		if nl < 0 {
+			continue
+		}
+		header := chunk[:nl]
+		body := []byte(chunk[nl+1:])
+
+		fields := strings.Fields(header)
+		if len(fields) < 2 {
+			continue
+		}
+		aPath := strings.TrimPrefix(fields[0], "a/")
+		bPath := strings.TrimPrefix(fields[1], "b/")
+		key := bPath
+		if bPath == "/dev/null" {
+			key = aPath
+		}
+		out[key] = body
+	}
+	return out
 }
 
 // FileAtRef returns the contents of path at ref. ref can be any rev
