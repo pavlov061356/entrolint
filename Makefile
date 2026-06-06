@@ -1,8 +1,10 @@
-.PHONY: help build test lint vuln fmt ci run pre-commit install-hooks tools clean
+.PHONY: help build test lint vuln mod-check fmt ci run pre-commit install-hooks tools clean
 
 BINARY  := entrolint
 MODULE  := github.com/pavlov061356/entrolint
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+# Strip leading "v" so local builds print the same version string as
+# goreleaser-built binaries (goreleaser drops the prefix for {{ .Version }}).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -14,8 +16,8 @@ LDFLAGS := -s -w \
 help:  ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build:  ## Build the binary
-	go build -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/entrolint
+build:  ## Build the binary (CGO off — match the release pipeline)
+	CGO_ENABLED=0 go build -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/entrolint
 
 test:  ## Run tests with race detector and coverage
 	go test -race -coverprofile=coverage.out ./...
@@ -26,11 +28,16 @@ lint:  ## Run golangci-lint
 vuln:  ## Scan dependencies for known CVEs (Go vuln DB)
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+mod-check:  ## Fail if go.mod / go.sum drift from `go mod tidy`
+	go mod tidy
+	git diff --exit-code -- go.mod go.sum \
+		|| (echo "go.mod or go.sum is dirty after 'go mod tidy' — commit the fix" >&2; exit 1)
+
 fmt:  ## Format code
 	gofumpt -w .
 	goimports -w .
 
-ci: lint test vuln  ## Run the same checks as CI
+ci: mod-check lint test vuln  ## Run the same checks as CI
 
 run:  ## Run the binary; example: make run ARGS="scan ."
 	go run ./cmd/entrolint $(ARGS)

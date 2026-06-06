@@ -14,9 +14,9 @@ version: 2
 
 project_name: entrolint
 
-before:
-  hooks:
-    - go mod tidy
+# No before.hooks intentionally. `go mod tidy` here would silently fix a
+# dirty go.mod at release time, hiding state drift from the test gate.
+# Mod-tidiness is enforced in CI via `make mod-check`.
 
 builds:
   - id: entrolint
@@ -34,7 +34,10 @@ builds:
       - -s -w
       - -X github.com/pavlov061356/entrolint/internal/version.Version={{ .Version }}
       - -X github.com/pavlov061356/entrolint/internal/version.Commit={{ .ShortCommit }}
-      - -X github.com/pavlov061356/entrolint/internal/version.Date={{ .CommitDate }}
+      # .Date is the build time in RFC3339 UTC (with Z). Matches the
+      # Makefile build flag and version.go's "ISO 8601 UTC" contract.
+      # .CommitDate would carry the commit author's local TZ offset.
+      - -X github.com/pavlov061356/entrolint/internal/version.Date={{ .Date }}
 
 archives:
   - id: default
