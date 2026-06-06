@@ -50,7 +50,7 @@ install-hooks:  ## Install git pre-commit hook calling `make pre-commit`
 	@echo "pre-commit hook installed at .git/hooks/pre-commit"
 
 tools:  ## Install dev tools (golangci-lint pinned, others latest)
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 	go install mvdan.cc/gofumpt@latest
 	go install golang.org/x/tools/cmd/goimports@latest
 

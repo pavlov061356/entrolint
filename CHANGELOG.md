@@ -66,6 +66,11 @@ versions.
 - **Breaking: `S` values shift** — `Default()` now includes
   `coupling: 0.6`. Files with many imports score higher; absolute
   thresholds in `.entrolint.yaml` may need re-tuning.
+- `golangci-lint` upgraded **v1.64.8 → v2.12.2**. Config rewritten to
+  the v2 schema (`version: "2"`, formatters split from linters,
+  exclusion presets). Two latent findings surfaced and fixed:
+  `prealloc` in `identifierfanout.collectTouchedSymbols` and
+  `staticcheck ST1023` in `scaling_test.go`. No detector set changes.
 - `pipeline.resolveEngine` now treats a cache missing lognormal entries
   for any active microstate (e.g. a v0.2 cache without `coupling`) as
   a miss and recalibrates fresh. Silent `S` degradation on upgrade is
