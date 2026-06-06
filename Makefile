@@ -1,4 +1,4 @@
-.PHONY: help build test lint fmt ci run pre-commit install-hooks tools clean
+.PHONY: help build test lint vuln fmt ci run pre-commit install-hooks tools clean
 
 BINARY  := entrolint
 MODULE  := github.com/pavlov061356/entrolint
@@ -23,11 +23,14 @@ test:  ## Run tests with race detector and coverage
 lint:  ## Run golangci-lint
 	golangci-lint run ./...
 
+vuln:  ## Scan dependencies for known CVEs (Go vuln DB)
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
 fmt:  ## Format code
 	gofumpt -w .
 	goimports -w .
 
-ci: lint test  ## Run the same checks as CI
+ci: lint test vuln  ## Run the same checks as CI
 
 run:  ## Run the binary; example: make run ARGS="scan ."
 	go run ./cmd/entrolint $(ARGS)
