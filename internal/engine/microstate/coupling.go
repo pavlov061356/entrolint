@@ -2,8 +2,9 @@ package microstate
 
 // Coupling counts import specs in a Go file as a per-file proxy for
 // efferent coupling. v0.3 MVP: every entry of f.AST.Imports — stdlib,
-// third-party, intra-module, dot-imports, and blank side-effect imports
-// alike — contributes 1. No package classification, no go.mod parsing.
+// third-party, intra-module, dot-imports, blank side-effect imports,
+// and the CGO `"C"` pseudo-import alike — contributes 1. No package
+// classification, no go.mod parsing.
 //
 // The real Robert-Martin metric (Ca, Ce, instability on the package
 // graph) is deferred: it needs a pre-pass over the whole tree and

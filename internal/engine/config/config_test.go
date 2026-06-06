@@ -67,6 +67,9 @@ churn_since_days: 30
 	if got.Weights["cyclomatic"] != 2.0 || got.Weights["nesting"] != 1.5 || got.Weights["length"] != 0.25 {
 		t.Errorf("Weights = %v, want full override", got.Weights)
 	}
+	if got.Weights["coupling"] != 0.6 {
+		t.Errorf("Weights[coupling] = %v, want preserved default 0.6 (YAML did not override)", got.Weights["coupling"])
+	}
 	if got.DeltaSMax != 0.1 {
 		t.Errorf("DeltaSMax = %v, want 0.1", got.DeltaSMax)
 	}
@@ -97,6 +100,9 @@ delta_s_max: 0.2
 	}
 	if got.Weights["length"] != 0.5 {
 		t.Errorf("Weights[length] = %v, want default 0.5", got.Weights["length"])
+	}
+	if got.Weights["coupling"] != 0.6 {
+		t.Errorf("Weights[coupling] = %v, want default 0.6", got.Weights["coupling"])
 	}
 	if got.DeltaSMax != 0.2 {
 		t.Errorf("DeltaSMax = %v, want 0.2", got.DeltaSMax)

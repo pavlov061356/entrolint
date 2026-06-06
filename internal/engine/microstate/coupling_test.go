@@ -94,6 +94,19 @@ func F() { fmt.Println(os.Args) }
 `,
 			want: 2,
 		},
+		{
+			name: "CGO pseudo-import counts",
+			src: `package p
+
+import (
+	"fmt"
+	"C"
+)
+
+func F() { fmt.Println() }
+`,
+			want: 2,
+		},
 	}
 
 	for _, tc := range tests {
