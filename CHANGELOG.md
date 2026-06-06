@@ -28,6 +28,15 @@ versions.
 - `.github/ISSUE_TEMPLATE/` — `config.yml` (redirects security reports
   and questions), `bug_report.yml` (structured form), `feature_request.yml`
   (area dropdown).
+- `.goreleaser.yml` (schema v2) — single binary, linux/darwin × amd64/arm64,
+  CGO off, tar.gz archives with bundled `LICENSE` / `README.md` /
+  `CHANGELOG.md`, SHA-256 checksums, GitHub-native release notes.
+- `.github/workflows/release.yml` — runs `goreleaser release --clean` on
+  every `v*.*.*` tag push; `contents: write` scoped to the release job
+  only, `GITHUB_TOKEN` is the sole secret.
+- `make vuln` — runs `govulncheck ./...` via `go run` (no separate
+  install step). Now part of `make ci`, so CI fails on any known CVE in
+  the call graph.
 
 > **Post-merge maintainer checklist** — `config.yml` and `SECURITY.md`
 > link to repo features that are not auto-enabled and only resolve once
