@@ -16,8 +16,8 @@ body:
     id: entrolint_version
     attributes:
       label: entrolint version
-      description: Output of `entrolint --version` (or the commit SHA you built from).
-      placeholder: "v0.3.0  (or  dev / abc1234)"
+      description: Output of `entrolint version` (or the commit SHA you built from).
+      placeholder: "entrolint v0.3.0 (abc1234, 2026-06-15)"
     validations:
       required: true
 

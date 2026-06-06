@@ -9,7 +9,7 @@ body:
         Thanks for the suggestion. A few notes before filing:
 
         - For open-ended ideas, [GitHub Discussions](https://github.com/pavlov061356/entrolint/discussions) is usually a better starting point.
-        - Out-of-scope before v1.0: non-Go analyzers (TS planned for v0.5), HTML/heatmap UI (v0.7), anything that needs network I/O.
+        - Out-of-scope before v1.0: non-Go analyzers (TS planned for v0.5), HTML/heatmap UI (v0.7), anything that needs network I/O, and coverage padding / feature flags / backwards-compat shims for pre-1.0 internal APIs.
         - The roadmap (`ROADMAP.md`) lists planned work — please check whether your idea is already scheduled.
 
   - type: dropdown

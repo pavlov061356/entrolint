@@ -29,6 +29,19 @@ versions.
   and questions), `bug_report.yml` (structured form), `feature_request.yml`
   (area dropdown).
 
+> **Post-merge maintainer checklist** — `config.yml` and `SECURITY.md`
+> link to repo features that are not auto-enabled and only resolve once
+> the repo is public. Do all of these before / at the moment of going
+> public:
+>
+> - [ ] Settings → Features → enable **Discussions** (creates the target
+>       for the `config.yml` Q&A link).
+> - [ ] Settings → Code security → enable **Private vulnerability
+>       reporting** (creates the target for the `SECURITY.md` link).
+> - [ ] Create labels: `bug`, `enhancement`, `triage` (used by the
+>       issue forms; GitHub will silently drop unknown labels otherwise).
+> - [ ] Smoke-test: open `https://github.com/pavlov061356/entrolint/security/advisories/new` and `https://github.com/pavlov061356/entrolint/discussions` from a logged-out browser — both should load.
+
 ### Fixed
 
 - License conflict: `LICENSE` was Apache-2.0 from the initial commit

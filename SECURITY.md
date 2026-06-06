@@ -8,8 +8,11 @@ should upgrade to the current `v0.X` line.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.3.x   | :white_check_mark: |
-| < 0.3   | :x:                |
+| 0.2.x   | :white_check_mark: |
+| 0.1.x   | :x:                |
+
+Once `v0.3.0` ships, support shifts to `0.3.x` and `0.2.x` is dropped —
+this table updates with every minor release.
 
 ## Reporting a vulnerability
 

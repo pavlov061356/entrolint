@@ -26,8 +26,14 @@ project — please read this file before opening a PR.
 ```bash
 git clone https://github.com/pavlov061356/entrolint
 cd entrolint
-make ci          # gofumpt + goimports + golangci-lint + race tests
+make tools       # install golangci-lint, gofumpt, goimports
+make ci          # golangci-lint + race tests (gate used in CI)
+make pre-commit  # gofumpt + goimports + lint + tests (formats too)
 ```
+
+`make ci` is what the CI workflow runs and what blocks a PR. `make
+pre-commit` adds in-place formatting — handy locally, do NOT confuse it
+with `ci` (formatters mutate the worktree, so they can't be the gate).
 
 ## Workflow
 
@@ -65,8 +71,8 @@ Before opening a PR:
       `## [Unreleased]`.
 - [ ] If the PR changes `S`, `T`, or `ΔS` values for any file, attach
       `entrolint scan --top 10` output before and after.
-- [ ] Dogfood: `entrolint check --base dev --head HEAD` from your
-      feature branch passes the local gate.
+- [ ] Dogfood: `go run ./cmd/entrolint check --base dev --head HEAD`
+      from your feature branch passes the local gate.
 
 ## Filing issues
 
