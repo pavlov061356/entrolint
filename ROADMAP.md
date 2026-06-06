@@ -73,7 +73,11 @@
 
 **Цель:** закрыть оставшиеся два микросостояния из README.
 
-- `coupling`: метрика на графе импортов (afferent/efferent, instability).
+- 🟡 `coupling`: per-file import count как efferent-coupling proxy
+  (v0.3 MVP, микросостояние `coupling`, default weight 0.6). Полный
+  граф Ca/Ce/instability требует pre-pass по всему дереву на обоих
+  refs в `check` — отложено до v0.4+, когда инфраструктура такого
+  pre-pass понадобится для другого детектора.
 - `duplication`: хеширование AST-поддеревьев (не строк) c порогом по размеру.
 - Веса коэффициентов пересматриваются вместе с появлением новых сигналов —
   возможен breaking change в скоре `S` (отмечается в CHANGELOG).
