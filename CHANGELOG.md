@@ -18,6 +18,39 @@ versions.
   [docs/formula.md](docs/formula.md)).
 - `cache.HasAll(names)` — checks that a cached `State` carries
   lognormal parameters for every currently active microstate.
+- `CONTRIBUTING.md` — dev setup, gitflow conventions, PR checklist,
+  scope notes.
+- `SECURITY.md` — supported versions, private vulnerability reporting
+  link, threat model, disclosure timeline.
+- `.github/PULL_REQUEST_TEMPLATE.md` with a dedicated **Formula impact**
+  section that asks PR authors to attach before/after scans when `S`
+  changes.
+- `.github/ISSUE_TEMPLATE/` — `config.yml` (redirects security reports
+  and questions), `bug_report.yml` (structured form), `feature_request.yml`
+  (area dropdown).
+
+> **Post-merge maintainer checklist** — `config.yml` and `SECURITY.md`
+> link to repo features that are not auto-enabled and only resolve once
+> the repo is public. Do all of these before / at the moment of going
+> public:
+>
+> - [ ] Settings → Features → enable **Discussions** (creates the target
+>       for the `config.yml` Q&A link).
+> - [ ] Settings → Code security → enable **Private vulnerability
+>       reporting** (creates the target for the `SECURITY.md` link).
+> - [ ] Create labels: `bug`, `enhancement`, `triage` (used by the
+>       issue forms; GitHub will silently drop unknown labels otherwise).
+> - [ ] Smoke-test: open `https://github.com/pavlov061356/entrolint/security/advisories/new` and `https://github.com/pavlov061356/entrolint/discussions` from a logged-out browser — both should load.
+
+### Fixed
+
+- License conflict: `LICENSE` was Apache-2.0 from the initial commit
+  while `README.md` declared MIT. Resolved by replacing `LICENSE` with
+  the canonical MIT text. MIT was the intended choice — `entrolint`
+  has no patentable IP, the mainstream Go-CLI ecosystem (cobra, viper,
+  golangci-lint, goreleaser) is MIT, and Apache's NOTICE / contributor
+  obligations add adoption friction for no real protection in this
+  context.
 
 ### Changed
 

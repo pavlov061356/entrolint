@@ -1,0 +1,105 @@
+name: Bug report
+description: Report incorrect output, a crash, or a regression in scan / check.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Before submitting:
+
+        - Check existing issues — your report may already exist.
+        - Security issues go to [private vulnerability reporting](https://github.com/pavlov061356/entrolint/security/advisories/new), NOT this tracker.
+        - The formula is unstable until v1.0 — "S value changed between releases" is expected, not a bug. See CHANGELOG.
+
+  - type: input
+    id: entrolint_version
+    attributes:
+      label: entrolint version
+      description: Output of `entrolint version` (or the commit SHA you built from).
+      placeholder: "entrolint v0.3.0 (abc1234, 2026-06-15)"
+    validations:
+      required: true
+
+  - type: input
+    id: go_version
+    attributes:
+      label: Go version
+      description: Output of `go version`.
+      placeholder: "go1.26.3 linux/amd64"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04 / macOS 15 / Windows 11 WSL2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - scan
+        - check
+        - both
+        - other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command run
+      description: Paste the full command line, including flags.
+      render: bash
+      placeholder: "entrolint check --base origin/dev --head HEAD --json"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: .entrolint.yaml contents (if any)
+      description: Paste your config, or leave empty if you use defaults.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      placeholder: "ΔS_density should have been around 0.01 — this PR only renames a variable."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Paste the actual output. For wrong-score reports, include the affected file's row from `--json` output.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducer
+      description: Smallest set of files / git refs that triggers the issue. A link to a public repo + two commit SHAs is ideal.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sanity checks
+      options:
+        - label: I confirmed this is not a known formula-shift between releases (checked CHANGELOG).
+          required: true
+        - label: I tried `--recalibrate` — the issue persists with a fresh cache.
+          required: false
