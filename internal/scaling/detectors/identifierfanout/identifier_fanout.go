@@ -101,7 +101,7 @@ func (d *Detector) thresholds() (int, float64) {
 // candidates for "PR changed the symbol", the v0.2 proxy for the
 // spec's explicit "def edited" check.
 func collectTouchedSymbols(pkgs []*packages.Package, changed map[string]bool) []types.Object {
-	var out []types.Object
+	out := make([]types.Object, 0, len(pkgs))
 	for _, pkg := range pkgs {
 		out = append(out, touchedSymbolsIn(pkg, pkgs, changed)...)
 	}
