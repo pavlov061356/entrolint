@@ -53,13 +53,16 @@ type ScanResult struct {
 
 // structuralMicrostates lists the contributors to S (churn lives only in T).
 // v0.1: cyclomatic, nesting, length. v0.3 adds coupling (per-file import count
-// as efferent-coupling proxy — full Ca/Ce graph deferred).
+// as efferent-coupling proxy) and duplication (intra-file AST-subtree clones);
+// cross-file coupling (Ca/Ce graph) and cross-file duplication are both deferred
+// to v0.4+ as they need a whole-tree pre-pass that check's blob scoring cannot give.
 func structuralMicrostates() []microstate.Microstate {
 	return []microstate.Microstate{
 		microstate.Cyclomatic{},
 		microstate.Nesting{},
 		microstate.Length{},
 		microstate.Coupling{},
+		microstate.Duplication{},
 	}
 }
 

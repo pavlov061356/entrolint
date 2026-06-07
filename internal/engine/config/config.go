@@ -43,10 +43,11 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Weights: map[string]float64{
-			"cyclomatic": 1.0,
-			"nesting":    0.8,
-			"coupling":   0.6,
-			"length":     0.5,
+			"cyclomatic":  1.0,
+			"nesting":     0.8,
+			"coupling":    0.6,
+			"length":      0.5,
+			"duplication": 0.7,
 		},
 		DeltaSMax:        0.05,
 		ChurnSinceDays:   90,

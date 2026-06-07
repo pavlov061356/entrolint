@@ -16,6 +16,16 @@ versions.
   and aliased forms. v0.3 MVP — the full Robert-Martin Ca/Ce/instability
   graph metric is deferred (see ROADMAP §v0.3 and
   [docs/formula.md](docs/formula.md)).
+- `duplication` microstate — size-weighted mass of structurally-identical
+  AST subtrees repeated WITHIN a file. Matching is structural (a Merkle
+  FNV-1a hash of subtree shape with identifier names and literal values
+  normalized away, so renamed/re-valued copies still collide — Type-2
+  clones), gated by a ≥12-node size threshold; a class of `n` copies of
+  size `s` contributes `(n-1)·s`, with nested clones counted once. v0.3
+  MVP — INTRA-file only; cross-file clone detection is deferred to v0.4+
+  for the same reason as the coupling graph (needs a whole-tree pre-pass
+  `check` cannot provide). Default weight `0.7`. Adding it shifts `S`
+  (k recalibrates); stale caches auto-recalibrate via `HasAll`.
 - `cache.HasAll(names)` — checks that a cached `State` carries
   lognormal parameters for every currently active microstate.
 - `CONTRIBUTING.md` — dev setup, gitflow conventions, PR checklist,
