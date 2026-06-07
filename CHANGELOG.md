@@ -8,6 +8,12 @@ versions.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-06-07
+
+### Fixed
+
+- README Status section still advertised v0.2 after the v0.3.0 release — updated to v0.3.
+
 ## [0.3.0] — 2026-06-07
 
 ### Added
@@ -150,7 +156,8 @@ versions.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pavlov061356/entrolint/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pavlov061356/entrolint/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pavlov061356/entrolint/releases/tag/v0.1.0
