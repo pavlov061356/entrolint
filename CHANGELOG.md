@@ -8,6 +8,16 @@ versions.
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-06-07
+
+### Changed
+
+- Docs only. README gains a GitHub Marketplace badge and link (the
+  `entrolint-check` Action is now published on the GitHub Marketplace).
+  The ROADMAP is re-sequenced: TypeScript is deferred to post-1.0 and the
+  pre-1.0 line deepens the Go engine — v0.5 is now cross-file `coupling`
+  (Ca/Ce/instability graph) + cross-file `duplication`.
+
 ## [0.4.2] — 2026-06-07
 
 ### Changed
@@ -241,7 +251,8 @@ left in place rather than re-pointed.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/pavlov061356/entrolint/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/pavlov061356/entrolint/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...v0.4.0
