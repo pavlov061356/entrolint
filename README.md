@@ -1,5 +1,10 @@
 # entrolint
 
+[![CI](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml/badge.svg)](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pavlov061356/entrolint.svg)](https://pkg.go.dev/github.com/pavlov061356/entrolint)
+[![Go version](https://img.shields.io/github/go-mod/go-version/pavlov061356/entrolint)](go.mod)
+[![License: MIT](https://img.shields.io/github/license/pavlov061356/entrolint)](LICENSE)
+
 > Code rots toward disorder. `entrolint` measures the entropy — and keeps it from growing on every PR.
 
 `entrolint` gauges code quality and maintainability through the metaphor of
@@ -10,6 +15,8 @@ a system with **high entropy**.
 And just as in the second law of thermodynamics, the entropy of a codebase only
 grows when left unattended. `entrolint`'s job is to measure it and keep it from
 growing unnoticed.
+
+> 🔒 Runs entirely locally — no network calls, no telemetry, ever.
 
 ## Why
 
@@ -32,6 +39,14 @@ disorder or lower it. It plugs into CI and blocks PRs that worsen maintainabilit
 beyond a configured threshold.
 
 > Positive ΔS = the code became harder to maintain.
+
+## Installation
+
+```bash
+go install github.com/pavlov061356/entrolint/cmd/entrolint@latest
+```
+
+Or download a prebuilt binary from the [latest release](https://github.com/pavlov061356/entrolint/releases/latest).
 
 ## Quick start
 
