@@ -8,6 +8,8 @@ versions.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-07
+
 ### Added
 
 - **`entrolint-check` composite GitHub Action** (`action.yml`) — drop-in
@@ -44,6 +46,24 @@ versions.
   works as an alias and now prints a one-line deprecation notice to
   stderr (stdout stays clean JSON). Passing both `--json` and
   `--format` is an error.
+
+### Fixed
+
+- README license badge switched from the dynamic shields `github/license`
+  endpoint (which intermittently failed with "repo not found" /
+  "Unable to select next GitHub token from pool" when shields' shared
+  GitHub token pool was rate-limited) to a static MIT badge — the license
+  is fixed, so there is nothing to query.
+- Markdown PR comment now sanitizes file paths before wrapping them in
+  inline code spans / table cells, so a path containing a backtick or a
+  `|` can't break out of the span or split a table column.
+
+### Security
+
+- The Action's source build (`version: source`) runs without the
+  `github-token` in its environment, and the input is documented as
+  trusted-refs-only — it compiles the checked-out tree, which must not be
+  untrusted fork code. The token is scoped to the release-download path.
 
 ## [0.3.1] — 2026-06-07
 
@@ -193,7 +213,8 @@ versions.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pavlov061356/entrolint/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pavlov061356/entrolint/compare/v0.1.0...v0.2.0

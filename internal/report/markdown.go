@@ -72,7 +72,7 @@ func writeScalingSignals(b *strings.Builder, r scaling.Result) {
 			if h.Class == scaling.ClassO1 {
 				continue
 			}
-			line := fmt.Sprintf("- `%s` **%s** in `%s`", h.Detector, h.Class, h.Path)
+			line := fmt.Sprintf("- `%s` **%s** in `%s`", h.Detector, h.Class, mdInline(h.Path))
 			if h.Size > 0 {
 				line += fmt.Sprintf(" (size %d)", h.Size)
 			}
@@ -102,7 +102,7 @@ func writeChangedFiles(b *strings.Builder, files []thermo.FileDelta) {
 	b.WriteString("| --- | --- | ---: | ---: | ---: |\n")
 	for _, f := range files {
 		fmt.Fprintf(b, "| %s | `%s` | %.3f | %.3f | %+.3f |\n",
-			f.Kind, f.Path, f.SBase, f.SHead, f.Delta)
+			f.Kind, mdCell(f.Path), f.SBase, f.SHead, f.Delta)
 	}
 }
 
@@ -125,7 +125,7 @@ func writeHotspots(b *strings.Builder, files []thermo.FileDelta) {
 	}
 	b.WriteString("\n### Top hotspots (changed files)\n\n")
 	for i, f := range ranked {
-		fmt.Fprintf(b, "%d. `%s` — S %.3f\n", i+1, f.Path, f.SHead)
+		fmt.Fprintf(b, "%d. `%s` — S %.3f\n", i+1, mdInline(f.Path), f.SHead)
 	}
 }
 
@@ -135,7 +135,27 @@ func writeSkipped(b *strings.Builder, skipped []gitx.SkippedPath) {
 	}
 	parts := make([]string, 0, len(skipped))
 	for _, s := range skipped {
-		parts = append(parts, fmt.Sprintf("`%s` (%s)", s.Path, s.Reason))
+		parts = append(parts, fmt.Sprintf("`%s` (%s)", mdInline(s.Path), s.Reason))
 	}
 	fmt.Fprintf(b, "\n_%d path(s) skipped: %s._\n", len(skipped), strings.Join(parts, ", "))
+}
+
+// mdInline makes s safe to drop inside a Markdown inline code span. The
+// comment renders untrusted file paths (from any repo the Action runs
+// on) inside backtick spans; a backtick in the path would close the
+// span early and corrupt the comment. Backticks can't be backslash-
+// escaped inside a span, so swap them for a look-alike modifier grave
+// accent. Newlines (which a path realistically can't hold, but be
+// defensive) collapse to spaces so a single line stays single.
+func mdInline(s string) string {
+	s = strings.ReplaceAll(s, "`", "ˋ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return s
+}
+
+// mdCell is mdInline plus escaping the GFM table column delimiter: a
+// literal '|' splits the cell even inside a backtick span.
+func mdCell(s string) string {
+	return strings.ReplaceAll(mdInline(s), "|", "\\|")
 }

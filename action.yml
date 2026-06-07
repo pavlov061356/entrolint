@@ -13,8 +13,11 @@ inputs:
   version:
     description: >-
       entrolint version to run: "latest", a tag like "v0.4.0", or "source"
-      to build from the checked-out tree (entrolint's own CI; needs Go set
-      up on the runner).
+      to build from the checked-out tree (needs Go set up on the runner).
+      SECURITY: "source" compiles the checked-out code — only use it on
+      trusted refs (e.g. your own branches), never for untrusted fork PRs;
+      prefer "latest" or a pinned tag there. The source build runs without
+      the github-token.
     default: latest
   base:
     description: >-
@@ -43,8 +46,26 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Resolve entrolint binary
-      id: resolve
+    # Build and download are split so the source build — which compiles
+    # the (possibly untrusted) checked-out tree — runs WITHOUT the
+    # github-token in its environment. Only the download path, which
+    # fetches a signed release, gets the token.
+    - name: Build entrolint from source
+      id: build
+      if: ${{ inputs.version == 'source' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        BINDIR="$RUNNER_TEMP/entrolint-bin"
+        mkdir -p "$BINDIR"
+        echo "Building entrolint from the checked-out source…"
+        go build -o "$BINDIR/entrolint" ./cmd/entrolint
+        echo "bin=$BINDIR/entrolint" >> "$GITHUB_OUTPUT"
+        "$BINDIR/entrolint" version || true
+
+    - name: Download entrolint release
+      id: download
+      if: ${{ inputs.version != 'source' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -53,30 +74,25 @@ runs:
         set -euo pipefail
         BINDIR="$RUNNER_TEMP/entrolint-bin"
         mkdir -p "$BINDIR"
-        if [ "$VERSION" = "source" ]; then
-          echo "Building entrolint from the checked-out source…"
-          go build -o "$BINDIR/entrolint" ./cmd/entrolint
-        else
-          case "$RUNNER_OS" in
-            Linux) OS=linux ;;
-            macOS) OS=darwin ;;
-            *) echo "::error::entrolint: unsupported runner OS '$RUNNER_OS'"; exit 1 ;;
-          esac
-          case "$RUNNER_ARCH" in
-            X64)   ARCH=x86_64 ;;
-            ARM64) ARCH=arm64 ;;
-            *) echo "::error::entrolint: unsupported runner arch '$RUNNER_ARCH'"; exit 1 ;;
-          esac
-          TAG="$VERSION"
-          if [ "$VERSION" = "latest" ]; then
-            TAG="$(gh release view --repo pavlov061356/entrolint --json tagName -q .tagName)"
-          fi
-          VER="${TAG#v}"
-          ASSET="entrolint_${VER}_${OS}_${ARCH}.tar.gz"
-          echo "Downloading $ASSET ($TAG)…"
-          gh release download "$TAG" --repo pavlov061356/entrolint --pattern "$ASSET" --dir "$BINDIR"
-          tar -xzf "$BINDIR/$ASSET" -C "$BINDIR" entrolint
+        case "$RUNNER_OS" in
+          Linux) OS=linux ;;
+          macOS) OS=darwin ;;
+          *) echo "::error::entrolint: unsupported runner OS '$RUNNER_OS'"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   ARCH=x86_64 ;;
+          ARM64) ARCH=arm64 ;;
+          *) echo "::error::entrolint: unsupported runner arch '$RUNNER_ARCH'"; exit 1 ;;
+        esac
+        TAG="$VERSION"
+        if [ "$VERSION" = "latest" ]; then
+          TAG="$(gh release view --repo pavlov061356/entrolint --json tagName -q .tagName)"
         fi
+        VER="${TAG#v}"
+        ASSET="entrolint_${VER}_${OS}_${ARCH}.tar.gz"
+        echo "Downloading $ASSET ($TAG)…"
+        gh release download "$TAG" --repo pavlov061356/entrolint --pattern "$ASSET" --dir "$BINDIR"
+        tar -xzf "$BINDIR/$ASSET" -C "$BINDIR" entrolint
         echo "bin=$BINDIR/entrolint" >> "$GITHUB_OUTPUT"
         "$BINDIR/entrolint" version || true
 
@@ -84,7 +100,7 @@ runs:
       id: check
       shell: bash
       env:
-        BIN: ${{ steps.resolve.outputs.bin }}
+        BIN: ${{ steps.build.outputs.bin || steps.download.outputs.bin }}
         BASE_IN: ${{ inputs.base }}
         HEAD_IN: ${{ inputs.head }}
         CONFIG_IN: ${{ inputs.config }}
@@ -129,7 +145,9 @@ runs:
           const marker = '<!-- entrolint-report -->';
           const { owner, repo } = context.repo;
           const issue_number = context.issue.number;
-          const { data: comments } = await github.rest.issues.listComments({
+          // Paginate: a busy PR can have >100 comments, and a missed marker
+          // would post a duplicate instead of updating the sticky one.
+          const comments = await github.paginate(github.rest.issues.listComments, {
             owner, repo, issue_number, per_page: 100,
           });
           const mine = comments.find((c) => c.body && c.body.includes(marker));
@@ -144,7 +162,7 @@ runs:
       if: ${{ inputs.upload-sarif == 'true' }}
       shell: bash
       env:
-        BIN: ${{ steps.resolve.outputs.bin }}
+        BIN: ${{ steps.build.outputs.bin || steps.download.outputs.bin }}
         CONFIG_IN: ${{ inputs.config }}
       run: |
         set -euo pipefail

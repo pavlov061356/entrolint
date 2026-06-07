@@ -19,8 +19,11 @@ func resolveOutputFormat(cmd *cobra.Command, format string, jsonFlag bool, allow
 			return "", fmt.Errorf("--json and --format conflict; use --format=json")
 		}
 		fmt.Fprintln(cmd.ErrOrStderr(), "entrolint: --json is deprecated; use --format=json")
-		return "json", nil
+		format = "json"
 	}
+	// Validate uniformly — the --json alias is no exception, so a command
+	// whose allowed set omits "json" would still reject it (honoring the
+	// contract this function documents).
 	for _, a := range allowed {
 		if format == a {
 			return format, nil

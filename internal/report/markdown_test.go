@@ -123,6 +123,40 @@ func TestCheckMarkdown_EmptyDiff(t *testing.T) {
 	}
 }
 
+func TestCheckMarkdown_SanitizesUntrustedPaths(t *testing.T) {
+	// A pathological file path with a backtick and a pipe must not break
+	// the inline code span (backtick) or the GFM table column (pipe).
+	res := pipeline.CheckResult{
+		Delta: thermo.Delta{
+			LinesChanged: 1,
+			Files:        []thermo.FileDelta{thermo.MakeFileDelta("a`b|c.go", thermo.DeltaAdded, 0, 0.9)},
+		},
+		Scaling: scaling.Result{
+			Class: scaling.ClassOk,
+			Files: []scaling.FileResult{{
+				Path:  "a`b|c.go",
+				Class: scaling.ClassOk,
+				Hits:  []scaling.Hit{{Detector: "implementor_scan", Class: scaling.ClassOk, Path: "a`b|c.go"}},
+			}},
+		},
+		Skipped: []gitx.SkippedPath{{Path: "x`y.go", Reason: gitx.SkipBinary}},
+	}
+	cfg := config.Default()
+	out := CheckMarkdown(res, cfg, res.Verdict(cfg))
+
+	if strings.Contains(out, "a`b") {
+		t.Errorf("raw backtick from a path leaked into the comment:\n%s", out)
+	}
+	// In the table row, the pipe must be escaped so it doesn't split the cell.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "| ") && strings.Contains(line, "c.go") {
+			if strings.Contains(line, "|c.go") && !strings.Contains(line, "\\|c.go") {
+				t.Errorf("unescaped pipe in table cell breaks the column:\n%s", line)
+			}
+		}
+	}
+}
+
 func TestCheckMarkdown_Deterministic(t *testing.T) {
 	res := sampleResult()
 	cfg := config.Default()

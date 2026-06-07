@@ -3,7 +3,7 @@
 [![CI](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml/badge.svg)](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pavlov061356/entrolint.svg)](https://pkg.go.dev/github.com/pavlov061356/entrolint)
 [![Go version](https://img.shields.io/github/go-mod/go-version/pavlov061356/entrolint)](go.mod)
-[![License: MIT](https://img.shields.io/github/license/pavlov061356/entrolint)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Code rots toward disorder. `entrolint` measures the entropy — and keeps it from growing on every PR.
 
@@ -123,15 +123,16 @@ jobs:
           fail-on-gate: false   # set true to block PRs that raise entropy
 ```
 
-| Input          | Default        | Description                                                        |
-| -------------- | -------------- | ------------------------------------------------------------------ |
-| `version`      | `latest`       | `latest`, a tag (`v0.4.0`), or `source` (build from the checkout). |
-| `base`         | PR base branch | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
-| `head`         | `HEAD`         | Head ref.                                                          |
-| `config`       | repo root      | Path to a `.entrolint.yaml`.                                       |
-| `comment`      | `true`         | Post / update the sticky PR comment.                               |
-| `upload-sarif` | `false`        | Upload the `scan` SARIF to Code Scanning.                          |
-| `fail-on-gate` | `false`        | Fail the job when the ΔS / scaling gate trips.                     |
+| Input          | Default           | Description                                                        |
+| -------------- | ----------------- | ------------------------------------------------------------------ |
+| `version`      | `latest`          | `latest`, a tag (`v0.4.0`), or `source` (build from the checkout). |
+| `base`         | PR base branch    | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
+| `head`         | `HEAD`            | Head ref.                                                          |
+| `config`       | `.entrolint.yaml` | Path to the config; defaults to `.entrolint.yaml` at the root.     |
+| `comment`      | `true`            | Post / update the sticky PR comment.                               |
+| `upload-sarif` | `false`           | Upload the `scan` SARIF to Code Scanning.                          |
+| `fail-on-gate` | `false`           | Fail the job when the ΔS / scaling gate trips.                     |
+| `github-token` | `github.token`    | Token used to post the PR comment and upload SARIF.                |
 
 > Fork PRs get a read-only `GITHUB_TOKEN`, so the comment step is skipped on PRs
 > from forks (the Action stays on `pull_request`, not `pull_request_target`).
@@ -167,12 +168,14 @@ Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
 ## Status
 
-📦 **v0.3** (latest release) — the `coupling` and `duplication` microstates complete
-the v0.3 structural set, layered on the v0.2 predictive scaling class (O-class
-detectors `shotgun`, `implementor_scan`, `switch_case_symmetry`,
-`identifier_fanout`, `state_multiplier` emit a `scaling_class` line next to `ΔS`).
-The formula, weights, and threshold are considered unstable until v1.0 — `S`
-values may shift between releases.
+📦 **v0.4** (latest release) — CI integration: a drop-in `entrolint-check`
+GitHub Action that comments ΔS / scaling class / hotspots on a PR and uploads
+SARIF to Code Scanning, plus `--format markdown|sarif` output. Built on the v0.3
+structural microstates (`coupling`, `duplication`) and the v0.2 predictive
+scaling class (O-class detectors `shotgun`, `implementor_scan`,
+`switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
+`scaling_class` line next to `ΔS`). The formula, weights, and threshold are
+considered unstable until v1.0 — `S` values may shift between releases.
 
 ## License
 
