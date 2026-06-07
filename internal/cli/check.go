@@ -12,13 +12,20 @@ import (
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
 	"github.com/pavlov061356/entrolint/internal/engine/pipeline"
+	"github.com/pavlov061356/entrolint/internal/report"
 	"github.com/pavlov061356/entrolint/internal/scaling"
 	"github.com/spf13/cobra"
 )
 
+// checkFormats are the output formats `check` accepts. SARIF is a
+// scan-only format (full-tree code-scanning log) — it is intentionally
+// absent here.
+var checkFormats = []string{"table", "json", "markdown"}
+
 var (
 	checkBase        string
 	checkHead        string
+	checkFormat      string
 	checkJSON        bool
 	checkConfigPath  string
 	checkRecalibrate bool
@@ -43,11 +50,17 @@ scaling_class_max in .entrolint.yaml.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		cmd.SilenceErrors = true
 		cmd.SilenceUsage = true
-		return runCheck(cmd.OutOrStdout(), checkRoot)
+		return runCheck(cmd, checkRoot)
 	},
 }
 
-func runCheck(out io.Writer, root string) error {
+func runCheck(cmd *cobra.Command, root string) error {
+	out := cmd.OutOrStdout()
+	format, err := resolveOutputFormat(cmd, checkFormat, checkJSON, checkFormats)
+	if err != nil {
+		return err
+	}
+
 	cfgPath := checkConfigPath
 	if cfgPath == "" {
 		cfgPath = filepath.Join(root, ".entrolint.yaml")
@@ -73,12 +86,19 @@ func runCheck(out io.Writer, root string) error {
 
 	verdict := res.Verdict(cfg)
 
-	if checkJSON {
+	switch format {
+	case "json":
 		if err := writeCheckJSON(out, res, cfg, verdict); err != nil {
 			return err
 		}
-	} else if err := writeCheckTable(out, res, cfg, verdict); err != nil {
-		return err
+	case "markdown":
+		if _, err := io.WriteString(out, report.CheckMarkdown(res, cfg, verdict)); err != nil {
+			return err
+		}
+	default:
+		if err := writeCheckTable(out, res, cfg, verdict); err != nil {
+			return err
+		}
 	}
 
 	if verdict.Failed {
@@ -180,7 +200,8 @@ func writeScalingHits(out io.Writer, r scaling.Result) error {
 func init() {
 	checkCmd.Flags().StringVar(&checkBase, "base", "dev", "base git ref (branch, tag, SHA)")
 	checkCmd.Flags().StringVar(&checkHead, "head", "HEAD", "head git ref")
-	checkCmd.Flags().BoolVar(&checkJSON, "json", false, "machine-readable JSON output")
+	checkCmd.Flags().StringVar(&checkFormat, "format", "table", "output format: table|json|markdown")
+	checkCmd.Flags().BoolVar(&checkJSON, "json", false, "machine-readable JSON output (deprecated: use --format=json)")
 	checkCmd.Flags().StringVar(&checkConfigPath, "config", "", "path to .entrolint.yaml (default: <root>/.entrolint.yaml)")
 	checkCmd.Flags().BoolVar(&checkRecalibrate, "recalibrate", false, "ignore cache and refit calibration")
 	checkCmd.Flags().StringVar(&checkRoot, "root", ".", "working tree root used for calibration")

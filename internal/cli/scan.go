@@ -10,11 +10,19 @@ import (
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
 	"github.com/pavlov061356/entrolint/internal/engine/pipeline"
+	"github.com/pavlov061356/entrolint/internal/report"
+	"github.com/pavlov061356/entrolint/internal/version"
 	"github.com/spf13/cobra"
 )
 
+// scanFormats are the output formats `scan` accepts. Markdown is a
+// check-only format (PR-comment shape) — it is intentionally absent
+// here.
+var scanFormats = []string{"table", "json", "sarif"}
+
 var (
 	scanTop         int
+	scanFormat      string
 	scanJSON        bool
 	scanRecalibrate bool
 	scanConfigPath  string
@@ -29,11 +37,17 @@ var scanCmd = &cobra.Command{
 		if len(args) == 1 {
 			root = args[0]
 		}
-		return runScan(cmd.OutOrStdout(), root)
+		return runScan(cmd, root)
 	},
 }
 
-func runScan(out io.Writer, root string) error {
+func runScan(cmd *cobra.Command, root string) error {
+	out := cmd.OutOrStdout()
+	format, err := resolveOutputFormat(cmd, scanFormat, scanJSON, scanFormats)
+	if err != nil {
+		return err
+	}
+
 	cfgPath := scanConfigPath
 	if cfgPath == "" {
 		cfgPath = filepath.Join(root, ".entrolint.yaml")
@@ -57,10 +71,23 @@ func runScan(out io.Writer, root string) error {
 	if scanTop > 0 && scanTop < len(files) {
 		files = files[:scanTop]
 	}
-	if scanJSON {
+	switch format {
+	case "json":
 		return writeJSON(out, files)
+	case "sarif":
+		return writeScanSARIF(out, files)
+	default:
+		return writeTable(out, files)
 	}
-	return writeTable(out, files)
+}
+
+func writeScanSARIF(out io.Writer, files []pipeline.FileScore) error {
+	data, err := report.ScanSARIF(files, report.DefaultSARIFOptions(version.Version))
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(data)
+	return err
 }
 
 func writeTable(out io.Writer, files []pipeline.FileScore) error {
@@ -84,7 +111,8 @@ func writeJSON(out io.Writer, files []pipeline.FileScore) error {
 
 func init() {
 	scanCmd.Flags().IntVar(&scanTop, "top", 0, "show only the N hottest files (0 = all)")
-	scanCmd.Flags().BoolVar(&scanJSON, "json", false, "machine-readable JSON output")
+	scanCmd.Flags().StringVar(&scanFormat, "format", "table", "output format: table|json|sarif")
+	scanCmd.Flags().BoolVar(&scanJSON, "json", false, "machine-readable JSON output (deprecated: use --format=json)")
 	scanCmd.Flags().BoolVar(&scanRecalibrate, "recalibrate", false, "ignore cache and refit calibration")
 	scanCmd.Flags().StringVar(&scanConfigPath, "config", "", "path to .entrolint.yaml (default: <root>/.entrolint.yaml)")
 }
