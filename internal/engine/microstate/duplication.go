@@ -18,8 +18,8 @@ import (
 // blobs. Cross-file detection is deferred to v0.4+, the same boundary
 // Coupling draws for the full Ca/Ce graph (see coupling.go).
 //
-// Matching is STRUCTURAL, not textual ("хеширование AST-поддеревьев, не
-// строк"): each subtree is folded Merkle-style into a 64-bit FNV-1a
+// Matching is STRUCTURAL, not textual ("hashing AST subtrees, not
+// lines"): each subtree is folded Merkle-style into a 64-bit FNV-1a
 // digest of its node type/operator tag plus its children's digests,
 // with identifier names and literal values NORMALIZED away (every
 // *ast.Ident folds to one tag, every *ast.BasicLit keeps only its
@@ -36,7 +36,7 @@ import (
 type Duplication struct{}
 
 // dupMinNodes is the inclusive AST-node-count floor for a subtree to be
-// a clone candidate (the ROADMAP's "порог по размеру"). ~12 nodes ≈ a
+// a clone candidate (the ROADMAP's "size threshold"). ~12 nodes ≈ a
 // 3-5 line block; below it near-everything (`x := y`, `return nil`,
 // `if err != nil { return err }`) collides and the signal is noise.
 // Internal default for the v0.3 MVP — deliberately not a config knob.

@@ -1,6 +1,6 @@
 // Package shotgun detects scatter-PR patterns: one logical change
 // scattered across ≥ MinFiles Go files with no common AST parent.
-// See docs/scaling.md §"shotgun".
+// See docs/scaling.md#heuristics.
 //
 // The detector groups files by the fingerprint of their canonicalized
 // added/removed lines (trimmed of leading/trailing whitespace, empty
@@ -87,7 +87,7 @@ func (d *Detector) Analyze(in scaling.Input) []scaling.Hit {
 
 // fingerprintPatch hashes canonicalized add/remove lines. empty=true
 // when the diff carries only whitespace/format changes — those don't
-// fire the heuristic per docs/scaling.md §"Известные упрощения v0.2".
+// fire the heuristic per docs/scaling.md#known-simplifications-v02.
 func fingerprintPatch(patch []byte) (string, bool) {
 	var added, removed []string
 	for _, line := range strings.Split(string(patch), "\n") {

@@ -12,8 +12,7 @@
 //     anchored at the changed file's owning package, then count
 //     cross-package uses. Fire O(2ⁿ) when external sites ≥ min.
 //
-// v0.2 simplifications, documented in docs/scaling.md §"Известные
-// упрощения" item 11:
+// v0.2 simplifications, documented in docs/scaling.md#known-simplifications-v02 item 11:
 //   - Only appended-at-end parameters are caught. Middle-insert,
 //     retype, and variadic Options are deferred.
 //   - typeKey is text-based: interface{} vs interface{F()} differ

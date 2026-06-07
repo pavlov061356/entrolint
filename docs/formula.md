@@ -1,23 +1,23 @@
-# `entrolint` — спецификация формулы (v0.1–v0.3 структурные микросостояния)
+# `entrolint` — formula specification (v0.1–v0.3 structural microstates)
 
-Этот документ — каноническая ссылка на математику расчёта энтропии `S`,
-температуры `T` и `ΔS` для PR. До 1.0 формула и веса считаются
-нестабильными — конкретные числа могут меняться от минорной версии к
-минорной.
+This document is the canonical reference for the math of computing entropy `S`,
+temperature `T`, and a PR's `ΔS`. Before 1.0 the formula and weights are
+considered unstable — the concrete numbers may change from one minor version to
+the next.
 
-## Область применения
+## Scope
 
-- **v0.1** — единственный язык анализа: Go. Источник AST — stdlib
+- **v0.1** — the only analysis language: Go. The AST source is the stdlib
   `go/ast`.
-- Структурные микросостояния: `cyclomatic`, `nesting`, `length`
-  (v0.1) + `coupling`, `duplication` (v0.3 MVP, см. §«Микросостояния»).
-  `churn` входит только в температуру `T`, не в `S`.
-- Веса `wᵢ` — захардкоженные дефолты в бинаре. В v0.8 они обучаются на
-  публичном корпусе (см. §«Что меняется в v0.8»).
+- Structural microstates: `cyclomatic`, `nesting`, `length` (v0.1) +
+  `coupling`, `duplication` (v0.3 MVP, see [Microstates](#microstates)). `churn` feeds only
+  the temperature `T`, not `S`.
+- The weights `wᵢ` are hardcoded defaults in the binary. In v0.8 they are
+  learned on a public corpus (see [What changes in v0.8](#what-changes-in-v08-weight-calibration)).
 
-## Уровни агрегации
+## Aggregation levels
 
-Энтропия живёт на четырёх уровнях, каждый — простая суммация снизу:
+Entropy lives at four levels, each a simple bottom-up summation:
 
 ```
 S_func     →   S_file = Σ S_func + S_file_structural
@@ -25,161 +25,155 @@ S_package  →   S_package = Σ S_file
 S_repo     →   S_repo    = Σ S_package
 ```
 
-`S_file_structural` — слагаемые, которые не локализуются в функции
-(длина файла как целого; в будущем — duplication). Поэтому `S_file` не
-является чистой суммой функций, а суммой функций плюс файловые добавки.
-Это важно для `ΔS`: если в PR поменялась одна функция, мы пересчитываем
-её вклад и оставляем остальные нетронутыми — расчёт дельты дешёвый.
+`S_file_structural` is the set of terms that don't localize to a function (the
+length of the file as a whole; in the future — duplication). That's why `S_file`
+is not a pure sum of functions but the sum of functions plus file-level add-ons.
+This matters for `ΔS`: if a PR changed a single function, we recompute its
+contribution and leave the rest untouched — the delta is cheap to compute.
 
-## Базовая форма
+## Base form
 
 ```
 S_file = k · Σᵢ wᵢ · ln(1 + mᵢ_norm)
 ```
 
-- `mᵢ_norm ∈ [0, 1]` — нормализованное значение i-го микросостояния.
-- `wᵢ` — вес микросостояния (из `.entrolint.yaml` или дефолт).
-- `k` — нормировочная константа проекта (см. §«Константа k»).
+- `mᵢ_norm ∈ [0, 1]` — the normalized value of the i-th microstate.
+- `wᵢ` — the microstate's weight (from `.entrolint.yaml` or the default).
+- `k` — the project's normalization constant (see [The `k` constant](#the-k-constant)).
 
-### Почему `ln(1 + x)`
+### Why `ln(1 + x)`
 
-- `ln(1 + 0) = 0` — идеально чистый код даёт нулевой вклад от каждого
-  микросостояния.
-- Рост сублинейный: функция с `cyclomatic = 20` не вдвое хуже функции с
-  `cyclomatic = 10`, она хуже, но не катастрофически. Согласуется с
-  больцмановской интуицией `S = k · ln(W)` и спасает от выбросов.
-- Гладкая, дифференцируемая — удобно для ΔS.
-- `+1` под логарифмом предотвращает `ln(0) = -∞`.
+- `ln(1 + 0) = 0` — perfectly clean code contributes zero from each microstate.
+- Growth is sublinear: a function with `cyclomatic = 20` is not twice as bad as
+  one with `cyclomatic = 10` — it's worse, but not catastrophically. This is
+  consistent with the Boltzmann intuition `S = k · ln(W)` and tames outliers.
+- Smooth and differentiable — convenient for ΔS.
+- The `+1` under the logarithm prevents `ln(0) = -∞`.
 
-### Почему аддитивная сумма по микросостояниям
+### Why an additive sum over microstates
 
-В статистической физике энтропия независимых подсистем складывается.
-Здесь мы **постулируем** независимость `cyclomatic` от `nesting` и т.д. —
-упрощение, но честное. Микросостояния в реальности коррелируют (см.
-§«Известные упрощения»); в v0.8 коррелированность учитывается через
-регрессионные веса.
+In statistical physics the entropy of independent subsystems adds up. Here we
+**postulate** that `cyclomatic` is independent of `nesting`, etc. — a
+simplification, but an honest one. In reality the microstates correlate (see
+[Known simplifications](#known-simplifications-v01)); in v0.8 the correlation is accounted for via
+regression weights.
 
-## Микросостояния
+## Microstates
 
-| Микросостояние | С версии | Уровень измерения | Сырое значение                                                                                            | Агрегация на уровень файла |
-| -------------- | -------- | ----------------- | --------------------------------------------------------------------------------------------------------- | -------------------------- |
-| `cyclomatic`   | v0.1     | функция           | количество decision points: `if`, `for`, `case`, `&&`, `\|\|`, `range`, `select case`, `defer recover`    | сумма по функциям          |
-| `nesting`      | v0.1     | функция           | максимальная глубина вложенности блоков                                                                   | **максимум** по функциям   |
-| `length`       | v0.1     | файл              | LOC без комментариев и пустых строк                                                                       | напрямую                   |
-| `coupling`     | v0.3     | файл              | `len(f.AST.Imports)` — число import-спецификаций (включая stdlib, dot, blank, CGO `"C"`, aliased)         | напрямую                   |
-| `duplication`  | v0.3     | файл              | размеро-взвешенная масса повторяющихся AST-поддеревьев внутри файла (структурный хеш, нормализация идентификаторов/литералов, порог ≥12 узлов)     | напрямую                   |
-| `churn`        | v0.1     | файл              | число коммитов, тронувших файл за окно 90 дней (`git log --follow --since`)                               | напрямую                   |
+| Microstate     | Since    | Measured at | Raw value                                                                                                 | File-level aggregation  |
+| -------------- | -------- | ----------- | --------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `cyclomatic`   | v0.1     | function    | number of decision points: `if`, `for`, `case`, `&&`, `\|\|`, `range`, `select case`, `defer recover`     | sum over functions      |
+| `nesting`      | v0.1     | function    | maximum block nesting depth                                                                               | **maximum** over functions |
+| `length`       | v0.1     | file        | LOC excluding comments and blank lines                                                                    | direct                  |
+| `coupling`     | v0.3     | file        | `len(f.AST.Imports)` — the number of import specs (including stdlib, dot, blank, CGO `"C"`, aliased)      | direct                  |
+| `duplication`  | v0.3     | file        | size-weighted mass of repeated AST subtrees within the file (structural hash, identifier/literal normalization, threshold ≥12 nodes) | direct |
+| `churn`        | v0.1     | file        | number of commits that touched the file in a 90-day window (`git log --follow --since`)                   | direct                  |
 
-`coupling` в v0.3 — MVP: per-file import count как proxy для efferent
-coupling. Полный граф Ca/Ce/instability по Мартину требует pre-pass по
-всему дереву на обоих refs в `check` (где доступны только blob'ы
-изменённых файлов) и отложен до момента, когда такая инфраструктура
-понадобится для другого детектора. См. ROADMAP §v0.3.
+`coupling` in v0.3 is an MVP: a per-file import count as a proxy for efferent
+coupling. The full Martin-style Ca/Ce/instability graph needs a whole-tree
+pre-pass on both refs in `check` (where only the blobs of the changed files are
+available) and is deferred until such infrastructure is needed for another
+detector. See [ROADMAP](ROADMAP.md#v03--coupling--duplication).
 
-`duplication` в v0.3 — тоже MVP: только **внутрифайловое** дублирование.
-Структурно-идентичные AST-поддеревья (хеш, не строки; имена и литералы
-нормализованы — ловит копипаст даже после переименования) считаются
-повторами; класс из `n` копий поддерева размера `s` даёт вклад `(n-1)·s`,
-вложенные клоны не считаются дважды (учитывается только внешний). Межфайловое
-копи-пейст требует того же pre-pass по всему дереву на обоих refs, что и
-полный граф coupling, и отложено до v0.4+.
+`duplication` in v0.3 is also an MVP: **intra-file** duplication only.
+Structurally-identical AST subtrees (a hash, not lines; identifiers and literals
+are normalized — so it catches copy-paste even after a rename) are counted as
+repeats; a class of `n` copies of a subtree of size `s` contributes `(n-1)·s`,
+and nested clones are not counted twice (only the outermost one counts).
+Cross-file copy-paste needs the same whole-tree pre-pass on both refs as the full
+coupling graph, and is deferred to v0.4+.
 
-Заметь: `nesting` агрегируется максимумом, не суммой. Глубокая
-вложенность — локальный дефект: файл с одной кошмарно вложенной функцией
-хуже, чем файл, где у всех функций глубина 3. Сумма скрыла бы этот
-сигнал.
+Note: `nesting` is aggregated by maximum, not by sum. Deep nesting is a local
+defect: a file with one horrendously nested function is worse than a file where
+every function has depth 3. A sum would hide that signal.
 
-Заметь также: `churn` не входит в `S` — он живёт в температуре `T` (см.
-§«Температура»).
+Note also: `churn` is not part of `S` — it lives in the temperature `T` (see
+[Temperature `T_file`](#temperature-t_file)).
 
-## Нормализация: lognormal CDF с полом
+## Normalization: lognormal CDF with a floor
 
-Для каждого микросостояния `i`:
+For each microstate `i`:
 
-1. На первом скане репы подгоняем параметры `(μᵢ, σᵢ)` лог-нормального
-   распределения по сырым значениям всех файлов.
-2. Нормализуем через CDF: `Φ_lognormal(m_raw_i; μᵢ, σᵢ) ∈ [0, 1]`.
-3. Применяем «пол», чтобы медианный файл чистой репы не отчитывался как
-   0.5:
+1. On the first scan of the repo we fit the parameters `(μᵢ, σᵢ)` of a
+   lognormal distribution over the raw values of all files.
+2. We normalize via the CDF: `Φ_lognormal(m_raw_i; μᵢ, σᵢ) ∈ [0, 1]`.
+3. We apply a "floor" so the median file of a clean repo doesn't report as 0.5:
 
    ```
    m_norm = max(0, Φ - 0.3) / 0.7
    ```
 
-   30-й перцентиль маппится в 0, 100-й — в 1.
+   The 30th percentile maps to 0, the 100th to 1.
 
-4. Параметры `(μᵢ, σᵢ)` для всех `i` кэшируются в
-   `.entrolint.cache.json`. Ручной пересчёт — `entrolint recalibrate`.
+4. The parameters `(μᵢ, σᵢ)` for all `i` are cached in
+   `.entrolint.cache.json`. A manual recompute is `entrolint recalibrate`.
 
-### Известная слабость
+### A known weakness
 
-Самокалибровка кругова́я — равномерно чистая или равномерно грязная репа
-выравнивает сигнал. Принимаем как ограничение v0.1; v0.8 переходит на
-обученный baseline-корпус.
+The self-calibration is circular — a uniformly clean or uniformly dirty repo
+flattens the signal. We accept this as a v0.1 limitation; v0.8 moves to a trained
+baseline corpus.
 
-### Почему именно lognormal
+### Why lognormal specifically
 
-Эмпирически `cyclomatic`, `length`, `churn` распределены лог-нормально
-(длинный правый хвост — несколько файлов сильно отличаются от массы).
-Lognormal CDF лучше передаёт хвост, чем линейная нормализация или
-простой перцентиль.
+Empirically `cyclomatic`, `length`, `churn` are lognormally distributed (a long
+right tail — a few files differ sharply from the bulk). The lognormal CDF
+captures the tail better than linear normalization or a plain percentile.
 
-## Константа `k`
+## The `k` constant
 
-Аналог постоянной Больцмана для проекта — **единица температуры**,
-выбранная так, чтобы числа в отчёте читались интуитивно.
+The project's analogue of the Boltzmann constant — a **unit of temperature**
+chosen so the numbers in the report read intuitively.
 
-Калибровка:
+Calibration:
 
 ```
 k = 1 / median(S_file_unscaled across the repo)
 ```
 
-После этого медианный файл репы получает `S ≈ 1.0`. Тогда фраза «S > 2 —
-горячо» буквально означает «вдвое грязнее медианы», и единицы измерения
-не приходится объяснять.
+After this the median file of the repo gets `S ≈ 1.0`. Then the phrase "S > 2 is
+hot" literally means "twice as dirty as the median", and the units don't need
+explaining.
 
-`k` кэшируется в `.entrolint.cache.json` вместе с `(μᵢ, σᵢ)`.
-Пересчитывается только командой `entrolint recalibrate`.
+`k` is cached in `.entrolint.cache.json` together with `(μᵢ, σᵢ)`. It is
+recomputed only by the `entrolint recalibrate` command.
 
-## Веса по умолчанию
+## Default weights
 
-Захардкоженные константы в бинаре, переопределяются через
-`.entrolint.yaml`:
+Hardcoded constants in the binary, overridable via `.entrolint.yaml`:
 
-| Микросостояние | Дефолт | С версии |
-| -------------- | ------ | -------- |
-| `cyclomatic`   | 1.0    | v0.1     |
-| `nesting`      | 0.8    | v0.1     |
-| `coupling`     | 0.6    | v0.3     |
-| `length`       | 0.5    | v0.1     |
-| `duplication`  | 0.7    | v0.3     |
+| Microstate     | Default | Since |
+| -------------- | ------- | ----- |
+| `cyclomatic`   | 1.0     | v0.1  |
+| `nesting`      | 0.8     | v0.1  |
+| `coupling`     | 0.6     | v0.3  |
+| `length`       | 0.5     | v0.1  |
+| `duplication`  | 0.7     | v0.3  |
 
-`churn` в этой таблице отсутствует — он не входит в `S` (см. ниже).
+`churn` is absent from this table — it's not part of `S` (see below).
 
-## Температура `T_file`
+## Temperature `T_file`
 
-Принципиальная архитектурная развилка: **`churn` не является
-микросостоянием `S`**. Он живёт только в температуре:
+A fundamental architectural decision: **`churn` is not a microstate of `S`**. It
+lives only in the temperature:
 
 ```
-S_file = статическая структурная энтропия (cyclomatic + nesting + length + coupling + duplication)
+S_file = static structural entropy (cyclomatic + nesting + length + coupling + duplication)
 T_file = S_file · ξ(churn_count)
 ξ(c)   = 1 + α · ln(1 + c),  α ≈ 0.5
 ```
 
-Результат: файл без коммитов за 90 дней получает `T = S` (холодный).
-Файл с 50 коммитами — `T ≈ 3·S` (горячий).
+Result: a file with no commits in 90 days gets `T = S` (cold). A file with 50
+commits gets `T ≈ 3·S` (hot).
 
-Команда `scan` ранжирует кандидаты на рефакторинг по **`T`**, не по `S`.
-Маппинг на физику честный: `S` — состояние системы, `T` — насколько
-часто оно возмущается. Бюджет рефакторинга идёт на высокий `T`, не на
-высокий `S`.
+The `scan` command ranks refactoring candidates by **`T`**, not by `S`. The
+mapping to physics is honest: `S` is the state of the system, `T` is how often it
+gets perturbed. The refactoring budget goes to high `T`, not high `S`.
 
-Конкретное значение `α = 0.5` — стартовое предположение, уточняется на
-dogfooding-данных.
+The specific value `α = 0.5` is a starting assumption, refined on dogfooding
+data.
 
-## `ΔS` для режима `check`
+## `ΔS` for `check` mode
 
 ```
 ΔS_total   = Σ_changed_files (S_head - S_base)
@@ -189,55 +183,53 @@ dogfooding-данных.
 ΔS_density = ΔS_total / max(1, lines_changed)
 ```
 
-Churn-фактор `ξ` в `ΔS` **не применяется** — гейт спрашивает про
-структуру, не про активность.
+The churn factor `ξ` is **not applied** in `ΔS` — the gate asks about structure,
+not about activity.
 
-### Гейт срабатывает по плотности
+### The gate fires on density
 
 ```
-fail if ΔS_density > ΔS_max     (по умолчанию 0.05)
+fail if ΔS_density > ΔS_max     (default 0.05)
 ```
 
-Причина: любой большой PR с чистым кодом фейлится по абсолютной `ΔS`
-только за счёт объёма. Плотность ловит реальный сигнал — «новый код
-грязнее существующего».
+The reason: any large PR of clean code would fail on absolute `ΔS` purely on
+volume. Density catches the real signal — "the new code is dirtier than what
+exists".
 
-В отчёте показываем **оба числа**: `ΔS_total` — для интуиции человека,
-`ΔS_density` — для фактического решения о fail/pass.
+The report shows **both numbers**: `ΔS_total` for human intuition, `ΔS_density`
+for the actual fail/pass decision.
 
-## Известные упрощения v0.1
+## Known simplifications (v0.1)
 
-Чтобы не делать вид, что всё гладко:
+So as not to pretend everything is smooth:
 
-1. **Микросостояния не независимы.** `cyclomatic` коррелирует с
-   `length`, `nesting` — с `cyclomatic`. Аддитивная сумма даёт двойной
-   счёт. PCA-декорреляция или регрессионная подгонка весов — это v0.8.
-2. **Самокалибровка кругова́я.** Равномерно чистая или равномерно
-   грязная репа выравнивает сигнал. Переход на обученный корпус — v0.8.
-3. **`+1` в `ln(1+x)`** при больших весах размывает различие между
-   «0 проблем» и «1 проблема». Можно заменить на `ln(c+x)` с большим
-   `c`, но добавляется ещё одна ручка — откладываем.
-4. **Окно `churn` фиксировано 90 днями.** В проектах с разной частотой
-   релизов это работает хуже; авто-подстройка под release cadence —
-   v1.0.
+1. **The microstates are not independent.** `cyclomatic` correlates with
+   `length`, `nesting` with `cyclomatic`. An additive sum double-counts.
+   PCA decorrelation or regression-fitted weights are v0.8.
+2. **The self-calibration is circular.** A uniformly clean or uniformly dirty
+   repo flattens the signal. Moving to a trained corpus is v0.8.
+3. **The `+1` in `ln(1+x)`** at large weights blurs the difference between
+   "0 problems" and "1 problem". It could be replaced with `ln(c+x)` for a
+   larger `c`, but that adds another knob — deferred.
+4. **The `churn` window is fixed at 90 days.** In projects with differing
+   release cadences this works worse; auto-tuning to release cadence is v1.0.
 
-## Что меняется в v0.8 («Weight calibration»)
+## What changes in v0.8 ("Weight calibration")
 
-В v0.8 веса `wᵢ` и форма нормализации перестают быть фиксированными
-константами и становятся обученной моделью.
+In v0.8 the weights `wᵢ` and the shape of the normalization stop being fixed
+constants and become a trained model.
 
-- **Таргет регрессии** — будущие bug-fix коммиты на файле в окне
-  +90 дней (определяются регексп-парсингом сообщений: `fix:`, `bug:`,
-  `hotfix:`). Вторичная валидация — PR revision count.
-- **Дефолтные веса** обучаются на публичном корпусе Go-репозиториев и
-  вкомпилируются в бинарь.
-- **Опциональный per-repo fine-tune** — `entrolint train --local`,
-  результат пишется в `.entrolint.cache.json`.
-- **Семейство моделей** — стартует с линейной регрессии (веса напрямую
-  маппятся на `wᵢ`); далее небольшое GBM с SHAP-объяснениями для
-  cross-microstate взаимодействий. Чёрных ящиков нет — интерпретируемость
-  load-bearing для инструмента.
+- **The regression target** is future bug-fix commits on the file within a
+  +90-day window (identified by regex-parsing commit messages: `fix:`, `bug:`,
+  `hotfix:`). A secondary validation is PR revision count.
+- **The default weights** are trained on a public corpus of Go repositories and
+  compiled into the binary.
+- **An optional per-repo fine-tune** — `entrolint train --local`, with the
+  result written to `.entrolint.cache.json`.
+- **The model family** starts with linear regression (the weights map directly
+  onto `wᵢ`); then a small GBM with SHAP explanations for cross-microstate
+  interactions. No black boxes — interpretability is load-bearing for the tool.
 
-Архитектурное следствие для кода v0.1: веса должны загружаться из
-конфига как данные, не использоваться как магические числа. Тогда
-переход на обученную модель — это смена источника, а не рефакторинг.
+The architectural consequence for the v0.1 code: weights must be loaded from the
+config as data, not used as magic numbers. Then moving to a trained model is a
+change of source, not a refactor.

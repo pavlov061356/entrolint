@@ -185,7 +185,7 @@ func Caller() string { return api.Format("x", 0) }
 }
 
 func TestStateMultiplier_EnumParamFires(t *testing.T) {
-	// New param is named enum type with ≥2 const'ов of its type.
+	// New param is a named enum type with ≥2 consts of its type.
 	files := map[string]string{
 		"go.mod":     "module example.com/probe\n\ngo 1.21\n",
 		"api/api.go": "package api\n\ntype Mode int\n\nconst (\n\tModeA Mode = iota\n\tModeB\n)\n\nfunc Format(s string, m Mode) string { return s }\n",
