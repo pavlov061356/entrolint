@@ -4,10 +4,6 @@ A version-by-version roadmap. Each version = a meaningful user experience, not a
 "technical intermediate commit". Versions follow semver; until 1.0 the formula
 and weights are considered unstable.
 
-The repository is private at the time of writing; items that depend on being
-public (marketplaces, a shields.io badge, public `go install` via GOPROXY) are
-replaced with internal equivalents or gated behind "once the repo goes public".
-
 ## v0.1 — Minimum viable physics ✅
 
 Released 2026-06-02. Tag `v0.1.0` on master.
@@ -32,18 +28,6 @@ Prove that the metaphor turns into a number that doesn't contradict intuition.
 
 **Out of scope:** coupling, duplication, O-classification, HTML, SARIF, a second language.
 
-## Distribution while private
-
-Not a separate version — a cross-cutting block, relevant until the repository is
-opened.
-
-- `go install` via the public GOPROXY is impossible.
-  We document the path: `GOPRIVATE=github.com/<user>/*` + a personal access token.
-- The primary delivery channel is GitHub Releases with prebuilt binaries
-  (via `goreleaser`, config in the repo).
-- Optionally: a private image in GHCR `ghcr.io/<user>/entrolint:<tag>` for use
-  from other CI pipelines without building from source.
-
 ## v0.2 — Predictive layer (scaling class) ✅
 
 Released 2026-06-04. Tag `v0.2.0` on master.
@@ -67,15 +51,17 @@ similar change cost".
 - ⏭ The `// entrolint:scaling=O(implementors) reason="..."` annotation —
   deferred to v0.3 after the first feedback on false positives.
 
-## v0.3 — Coupling & duplication
+## v0.3 — Coupling & duplication ✅
+
+Released 2026-06-07. Tag `v0.3.0` on master.
 
 **Goal:** close the remaining two microstates from the README.
 
-- 🟡 `coupling`: per-file import count as an efferent-coupling proxy (v0.3 MVP,
+- ✅ `coupling`: per-file import count as an efferent-coupling proxy (v0.3 MVP,
   the `coupling` microstate, default weight 0.6). The full Ca/Ce/instability
   graph needs a whole-tree pre-pass on both refs in `check` — deferred to v0.4+,
   once such pre-pass infrastructure is needed for another detector.
-- 🟡 `duplication`: hashing AST subtrees (not lines) with a size threshold.
+- ✅ `duplication`: hashing AST subtrees (not lines) with a size threshold.
   The v0.3 MVP implements **intra-file** duplication: structurally-identical
   subtrees (hashed with identifier/literal normalization, a ≥12-node threshold,
   a class contributing `(n-1)·s`, default weight 0.7). Cross-file copy-paste needs
@@ -137,8 +123,7 @@ data.
 **Goal:** freeze the public contract. Before 1.0 the formula and weights may
 change; from 1.0 on — only per semver.
 
-- A calibration corpus from public Go/TS repositories (entrolint analyzes them
-  but stays private itself). The author forms the regression ground truth, not an
+- A calibration corpus from public Go/TS repositories (entrolint analyzes them). The author forms the regression ground truth, not an
   external community.
 - The `docs/formula.md` document — final math, weight justification, calibration
   protocol.
