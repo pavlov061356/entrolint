@@ -8,6 +8,8 @@ versions.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-07
+
 ### Changed
 
 - Internal: all CLI output rendering is centralized in `internal/report`
@@ -231,7 +233,8 @@ versions.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pavlov061356/entrolint/compare/v0.2.0...v0.3.0
