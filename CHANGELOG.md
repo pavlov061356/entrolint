@@ -8,7 +8,7 @@ versions.
 
 ## [Unreleased]
 
-## [0.4.1] — 2026-06-07
+## [0.4.2] — 2026-06-07
 
 ### Changed
 
@@ -27,6 +27,14 @@ versions.
 
 - Action `description` shortened to under 125 characters so the Action
   passes GitHub Marketplace publishing validation.
+
+## [0.4.1] — 2026-06-07
+
+Tagged on the v0.4.0 commit by mistake (the tag was pushed before the
+release PR merged), so this release is byte-identical to v0.4.0 and
+carries none of the changes listed under [0.4.2] — those ship in v0.4.2.
+The tag is immutable (already cached by the Go module proxy), so it is
+left in place rather than re-pointed.
 
 ## [0.4.0] — 2026-06-07
 
@@ -233,7 +241,8 @@ versions.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/pavlov061356/entrolint/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...v0.3.1
