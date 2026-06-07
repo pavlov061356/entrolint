@@ -8,6 +8,63 @@ versions.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-07
+
+### Added
+
+- **`entrolint-check` composite GitHub Action** (`action.yml`) — drop-in
+  `uses: pavlov061356/entrolint@v0`. Downloads the released binary for the
+  runner's OS/arch (or builds from source with `version: source`), runs
+  `check`, and posts a sticky PR comment (ΔS, scaling class, top-3 changed-file
+  hotspots) keyed on the `<!-- entrolint-report -->` marker so re-runs update in
+  place. Inputs: `version`, `base`, `head`, `config`, `comment`,
+  `fail-on-gate`, `upload-sarif`, `github-token`. The gate verdict is derived
+  from the JSON `verdict` field, distinguishing a tripped gate from a real
+  error. Fork PRs (read-only token) skip the comment — the Action uses
+  `pull_request`, not `pull_request_target`.
+- **`.github/workflows/entrolint.yml`** — dogfoods entrolint on its own PRs
+  (advisory: comments + uploads SARIF, never blocks; not a required status
+  check). Closes the v0.1-deferred "dogfood entrolint in CI" item.
+- `--format` flag on `scan` and `check`. `scan` accepts
+  `table` (default), `json`, `sarif`; `check` accepts `table`,
+  `json`, `markdown`. The formats are per-command — `sarif` is
+  scan-only, `markdown` is check-only.
+- `internal/report` package rendering the typed engine results into
+  integration formats: a GitHub-flavored Markdown PR-comment body
+  (`check --format markdown` — verdict, ΔS summary, scaling signals,
+  changed-file ΔS table, top-3 changed-file hotspots, with a hidden
+  `<!-- entrolint-report -->` marker for sticky-comment updates) and a
+  hand-rolled SARIF 2.1.0 log (`scan --format sarif`) for GitHub Code
+  Scanning — one `entrolint/high-entropy` result per file whose
+  temperature T clears a band floor (note ≥ 1.0, warning ≥ 1.5,
+  error ≥ 3.0), located at the file (line 1; entrolint scores per
+  file, not per line).
+
+### Deprecated
+
+- `--json` on `scan`/`check` — use `--format json`. The flag still
+  works as an alias and now prints a one-line deprecation notice to
+  stderr (stdout stays clean JSON). Passing both `--json` and
+  `--format` is an error.
+
+### Fixed
+
+- README license badge switched from the dynamic shields `github/license`
+  endpoint (which intermittently failed with "repo not found" /
+  "Unable to select next GitHub token from pool" when shields' shared
+  GitHub token pool was rate-limited) to a static MIT badge — the license
+  is fixed, so there is nothing to query.
+- Markdown PR comment now sanitizes file paths before wrapping them in
+  inline code spans / table cells, so a path containing a backtick or a
+  `|` can't break out of the span or split a table column.
+
+### Security
+
+- The Action's source build (`version: source`) runs without the
+  `github-token` in its environment, and the input is documented as
+  trusted-refs-only — it compiles the checked-out tree, which must not be
+  untrusted fork code. The token is scoped to the release-download path.
+
 ## [0.3.1] — 2026-06-07
 
 ### Fixed
@@ -156,7 +213,8 @@ versions.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pavlov061356/entrolint/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/pavlov061356/entrolint/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/pavlov061356/entrolint/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pavlov061356/entrolint/compare/v0.1.0...v0.2.0

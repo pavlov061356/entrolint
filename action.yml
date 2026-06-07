@@ -1,0 +1,192 @@
+name: entrolint-check
+description: >-
+  Measure a PR's code-entropy delta (ΔS), scaling class and hotspots, post
+  them as a sticky PR comment, and optionally upload a SARIF code-scanning
+  log. Runs entirely on the runner — no network calls beyond fetching the
+  entrolint binary.
+author: pavlov061356
+branding:
+  icon: thermometer
+  color: orange
+
+inputs:
+  version:
+    description: >-
+      entrolint version to run: "latest", a tag like "v0.4.0", or "source"
+      to build from the checked-out tree (needs Go set up on the runner).
+      SECURITY: "source" compiles the checked-out code — only use it on
+      trusted refs (e.g. your own branches), never for untrusted fork PRs;
+      prefer "latest" or a pinned tag there. The source build runs without
+      the github-token.
+    default: latest
+  base:
+    description: >-
+      Base git ref for ΔS. Empty (default) resolves to the PR base branch
+      (origin/<base_ref>) on pull_request events, else "dev".
+    default: ""
+  head:
+    description: Head git ref.
+    default: HEAD
+  config:
+    description: Path to a .entrolint.yaml (optional; defaults to the repo root).
+    default: ""
+  comment:
+    description: Post/update a sticky PR comment with the check report.
+    default: "true"
+  fail-on-gate:
+    description: Exit non-zero (fail the job) when the ΔS / scaling gate trips.
+    default: "false"
+  upload-sarif:
+    description: Run `scan --format sarif` and upload it to GitHub Code Scanning.
+    default: "false"
+  github-token:
+    description: Token used to post the PR comment and upload SARIF.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    # Build and download are split so the source build — which compiles
+    # the (possibly untrusted) checked-out tree — runs WITHOUT the
+    # github-token in its environment. Only the download path, which
+    # fetches a signed release, gets the token.
+    - name: Build entrolint from source
+      id: build
+      if: ${{ inputs.version == 'source' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        BINDIR="$RUNNER_TEMP/entrolint-bin"
+        mkdir -p "$BINDIR"
+        echo "Building entrolint from the checked-out source…"
+        go build -o "$BINDIR/entrolint" ./cmd/entrolint
+        echo "bin=$BINDIR/entrolint" >> "$GITHUB_OUTPUT"
+        "$BINDIR/entrolint" version || true
+
+    - name: Download entrolint release
+      id: download
+      if: ${{ inputs.version != 'source' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        BINDIR="$RUNNER_TEMP/entrolint-bin"
+        mkdir -p "$BINDIR"
+        case "$RUNNER_OS" in
+          Linux) OS=linux ;;
+          macOS) OS=darwin ;;
+          *) echo "::error::entrolint: unsupported runner OS '$RUNNER_OS'"; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   ARCH=x86_64 ;;
+          ARM64) ARCH=arm64 ;;
+          *) echo "::error::entrolint: unsupported runner arch '$RUNNER_ARCH'"; exit 1 ;;
+        esac
+        TAG="$VERSION"
+        if [ "$VERSION" = "latest" ]; then
+          TAG="$(gh release view --repo pavlov061356/entrolint --json tagName -q .tagName)"
+        fi
+        VER="${TAG#v}"
+        ASSET="entrolint_${VER}_${OS}_${ARCH}.tar.gz"
+        echo "Downloading $ASSET ($TAG)…"
+        gh release download "$TAG" --repo pavlov061356/entrolint --pattern "$ASSET" --dir "$BINDIR"
+        tar -xzf "$BINDIR/$ASSET" -C "$BINDIR" entrolint
+        echo "bin=$BINDIR/entrolint" >> "$GITHUB_OUTPUT"
+        "$BINDIR/entrolint" version || true
+
+    - name: Run entrolint check
+      id: check
+      shell: bash
+      env:
+        BIN: ${{ steps.build.outputs.bin || steps.download.outputs.bin }}
+        BASE_IN: ${{ inputs.base }}
+        HEAD_IN: ${{ inputs.head }}
+        CONFIG_IN: ${{ inputs.config }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        set -euo pipefail
+        BASE="$BASE_IN"
+        if [ -z "$BASE" ]; then
+          if [ -n "${BASE_REF:-}" ]; then BASE="origin/$BASE_REF"; else BASE="dev"; fi
+        fi
+        ARGS=(check --base "$BASE" --head "$HEAD_IN")
+        if [ -n "$CONFIG_IN" ]; then ARGS+=(--config "$CONFIG_IN"); fi
+        MD="$RUNNER_TEMP/entrolint-report.md"
+        JSON="$RUNNER_TEMP/entrolint-report.json"
+        # check exits 1 when the gate trips but still writes the full
+        # report, so swallow the status here and derive the verdict from
+        # the JSON below — that distinguishes a tripped gate from a real
+        # error (which yields no valid JSON).
+        "$BIN" "${ARGS[@]}" --format markdown > "$MD" 2>/dev/null || true
+        "$BIN" "${ARGS[@]}" --format json > "$JSON" 2> "$RUNNER_TEMP/entrolint-err.txt" || true
+        if ! jq -e . "$JSON" >/dev/null 2>&1; then
+          echo "::error::entrolint check failed to produce a report:"
+          cat "$RUNNER_TEMP/entrolint-err.txt" || true
+          exit 1
+        fi
+        VERDICT="$(jq -r '.verdict' "$JSON")"
+        echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+        echo "report-md=$MD" >> "$GITHUB_OUTPUT"
+        echo "report-json=$JSON" >> "$GITHUB_OUTPUT"
+        echo "entrolint verdict: $VERDICT"
+
+    - name: Upsert PR comment
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      env:
+        REPORT_MD: ${{ steps.check.outputs.report-md }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync(process.env.REPORT_MD, 'utf8');
+          const marker = '<!-- entrolint-report -->';
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          // Paginate: a busy PR can have >100 comments, and a missed marker
+          // would post a duplicate instead of updating the sticky one.
+          const comments = await github.paginate(github.rest.issues.listComments, {
+            owner, repo, issue_number, per_page: 100,
+          });
+          const mine = comments.find((c) => c.body && c.body.includes(marker));
+          if (mine) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body });
+          }
+
+    - name: Generate SARIF
+      id: sarif
+      if: ${{ inputs.upload-sarif == 'true' }}
+      shell: bash
+      env:
+        BIN: ${{ steps.build.outputs.bin || steps.download.outputs.bin }}
+        CONFIG_IN: ${{ inputs.config }}
+      run: |
+        set -euo pipefail
+        ARGS=(scan --format sarif)
+        if [ -n "$CONFIG_IN" ]; then ARGS+=(--config "$CONFIG_IN"); fi
+        SARIF="$RUNNER_TEMP/entrolint.sarif"
+        "$BIN" "${ARGS[@]}" > "$SARIF"
+        echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF
+      if: ${{ inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.sarif.outputs.sarif }}
+        category: entrolint
+
+    - name: Enforce gate
+      if: ${{ inputs.fail-on-gate == 'true' }}
+      shell: bash
+      env:
+        VERDICT: ${{ steps.check.outputs.verdict }}
+      run: |
+        if [ "$VERDICT" = "fail" ]; then
+          echo "::error::entrolint gate failed — ΔS / scaling threshold exceeded."
+          exit 1
+        fi
+        echo "entrolint gate passed."

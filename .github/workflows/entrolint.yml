@@ -1,0 +1,41 @@
+name: entrolint
+
+# Dogfood: run entrolint on its own PRs. Advisory — it comments the ΔS
+# report and uploads SARIF, but never fails the build (the formula is
+# unstable until v1.0). Consumers can flip fail-on-gate: true.
+on:
+  pull_request:
+    branches: [dev, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  entrolint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full head history + the base branch ref so check can compute
+          # the base...head merge-base for the triple-dot diff.
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: |
+          git fetch --no-tags origin \
+            "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: entrolint check
+        uses: ./
+        with:
+          version: source        # build from this checkout (no release to download yet)
+          comment: true
+          upload-sarif: true
+          fail-on-gate: false    # advisory until v1.0
