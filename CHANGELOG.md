@@ -8,6 +8,24 @@ versions.
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: all CLI output rendering is centralized in `internal/report`
+  — `CheckTable` / `CheckJSON` / `ScanTable` / `ScanJSON` join the
+  existing Markdown and SARIF renderers, and `internal/cli` is now a thin
+  format-dispatch layer. The table renderers are rebuilt on
+  `strings.Builder`, dropping the per-write error-check boilerplate, and
+  the non-O(1) scaling-hit iteration is a single shared `nonO1Hits`
+  helper (previously duplicated between the table and Markdown
+  renderers). Output is byte-for-byte unchanged (verified against the
+  v0.4.0 binary); this is the "cooling" refactor of the `check.go` /
+  `scan.go` hotspots entrolint flagged on itself.
+
+### Fixed
+
+- Action `description` shortened to under 125 characters so the Action
+  passes GitHub Marketplace publishing validation.
+
 ## [0.4.0] — 2026-06-07
 
 ### Added

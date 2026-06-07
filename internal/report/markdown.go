@@ -63,31 +63,22 @@ func CheckMarkdown(res pipeline.CheckResult, cfg config.Config, v pipeline.Verdi
 }
 
 // writeScalingSignals lists every non-O(1) detector hit so the reader
-// sees why the class is elevated. Mirrors writeScalingHits in the CLI
-// table renderer.
+// sees why the class is elevated. Shares nonO1Hits with the table
+// renderer (text.go) — only the per-hit formatting differs.
 func writeScalingSignals(b *strings.Builder, r scaling.Result) {
-	var lines []string
-	for _, f := range r.Files {
-		for _, h := range f.Hits {
-			if h.Class == scaling.ClassO1 {
-				continue
-			}
-			line := fmt.Sprintf("- `%s` **%s** in `%s`", h.Detector, h.Class, mdInline(h.Path))
-			if h.Size > 0 {
-				line += fmt.Sprintf(" (size %d)", h.Size)
-			}
-			if h.Evidence != "" {
-				line += " — " + h.Evidence
-			}
-			lines = append(lines, line)
-		}
-	}
-	if len(lines) == 0 {
+	hits := nonO1Hits(r)
+	if len(hits) == 0 {
 		return
 	}
 	b.WriteString("\n**Scaling signals**\n")
-	for _, l := range lines {
-		b.WriteString(l)
+	for _, h := range hits {
+		fmt.Fprintf(b, "- `%s` **%s** in `%s`", h.Detector, h.Class, mdInline(h.Path))
+		if h.Size > 0 {
+			fmt.Fprintf(b, " (size %d)", h.Size)
+		}
+		if h.Evidence != "" {
+			b.WriteString(" — " + h.Evidence)
+		}
 		b.WriteByte('\n')
 	}
 }

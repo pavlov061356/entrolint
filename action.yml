@@ -1,9 +1,5 @@
 name: entrolint-check
-description: >-
-  Measure a PR's code-entropy delta (ΔS), scaling class and hotspots, post
-  them as a sticky PR comment, and optionally upload a SARIF code-scanning
-  log. Runs entirely on the runner — no network calls beyond fetching the
-  entrolint binary.
+description: "Comment a PR's code-entropy delta (ΔS), scaling class and hotspots; upload SARIF to Code Scanning."
 author: pavlov061356
 branding:
   icon: thermometer
