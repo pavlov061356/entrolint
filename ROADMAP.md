@@ -86,63 +86,84 @@ Released 2026-06-07. Tag `v0.3.0` on master.
 - ⏭ An entropy badge (static SVG / shields endpoint) — deferred; low value for the
   infra cost.
 
-## v0.5 — A second language (TypeScript)
+> **Direction (revised 2026-06-07).** A second language is deferred out of the
+> pre-1.0 line. entrolint's edge is the depth of the entropy model and the gate,
+> not the breadth of languages — and a second-language analyzer is best built
+> with real fluency in that language. So the pre-1.0 roadmap deepens the Go
+> engine and the physics metaphor (the parts where entrolint is unique);
+> TypeScript and other languages move to post-1.0 / on-demand.
 
-**Goal:** prove the formula is language-agnostic, not Go-specific.
+## v0.5 — Engine depth: cross-file coupling & duplication
 
-- Wiring up tree-sitter (via cgo bindings) or an external tsc.
-- An `internal/analyzer/typescript/` analyzer.
-- Microstates are shared; the parsing implementation differs.
-- Calibration against new percentiles from a TS corpus.
-- `coupling` and `scaling class` — partially, to the extent tree-sitter provides
-  cross-reference information.
+**Goal:** turn the v0.3 per-file MVPs into the real cross-file metrics — the
+biggest accuracy win still on the table, squarely in Go's wheelhouse.
 
-## v0.6 — Experimental microstates
+- Full `coupling` as a Robert-Martin Ca/Ce/instability graph (efferent **and**
+  afferent coupling), not just a per-file import count.
+- Cross-file `duplication`: structurally-identical AST subtrees detected
+  *across* files, not only within one.
+- Both need a whole-tree pre-pass on both refs in `check` — the shared
+  infrastructure deferred since v0.3. Build it once; both detectors consume it.
+- Recalibration with a CHANGELOG-noted `S` shift as the signals get richer.
 
-**Goal:** test subtler signals and keep only those that survive on dogfooding
-data.
-
-- `shannon_identifiers` — Shannon entropy over a module's identifier names.
-- `shannon_ast` — entropy over AST-subtree shapes.
-- `comment_anomaly` — deviation of the comment-to-code ratio.
-- `todo_density` — frequency of `TODO`/`FIXME`, weighted by age.
-- All are enabled by a `--experimental` flag and don't enter the main `S` without
-  being explicitly turned on in `.entrolint.yaml`.
-
-## v0.7 — HTML heatmap & visualization
+## v0.6 — HTML heatmap & visualization
 
 **Goal:** a heat map you wouldn't be ashamed to show the team.
 
 - A static HTML report `entrolint scan --html out/`.
-- A tree heatmap (squarified treemap) by T.
-- Drill-down: click a file to see the per-microstate breakdown.
+- A tree heatmap (squarified treemap) by T; drill-down to the per-microstate
+  breakdown (now including the v0.5 cross-file coupling graph).
 - A phase portrait: an `S(t)` graph over git history for a window (can be
   precomputed in CI as an artifact).
+
+## v0.7 — The physics layer
+
+**Goal:** lean into the thermodynamic metaphor that makes entrolint unique.
+
+- A reward for a `class downgrade` — a negative contribution to ΔS when a change
+  lowers the scaling class. The wire fields (`downgrade_bonus`,
+  `acknowledged_scaling`) already exist; this adds the producer. (Deferred from v0.2.)
+- A `// entrolint:scaling=O(...) reason="..."` annotation — justified exceptions.
+  (Deferred from v0.2.)
+- A **Maxwell log**: commits with `ΔS < 0` over a period — who cooled the system
+  down.
+- Free energy `F = S − α·V` — the `check` threshold adapts to the repo's pace.
+
+## v0.8 — Experimental microstates & weight calibration
+
+**Goal:** test subtler signals; keep only those that survive on dogfooding data.
+
+- `shannon_identifiers` (entropy over identifier names), `shannon_ast` (over
+  AST-subtree shapes), `comment_anomaly` (comment-to-code ratio deviation),
+  `todo_density` (`TODO`/`FIXME` frequency, age-weighted) — behind a
+  `--experimental` flag, off in `S` unless enabled in `.entrolint.yaml`.
+- Weight calibration: learn the formula weights from real bug-fix history
+  (interpretable models only; hybrid global + per-repo).
 
 ## v1.0 — A stable formula
 
 **Goal:** freeze the public contract. Before 1.0 the formula and weights may
 change; from 1.0 on — only per semver.
 
-- A calibration corpus from public Go/TS repositories (entrolint analyzes them). The author forms the regression ground truth, not an
-  external community.
+- A calibration corpus from public Go repositories (entrolint analyzes them).
+  The author forms the regression ground truth, not an external community.
 - The `docs/formula.md` document — final math, weight justification, calibration
   protocol.
 - The `docs/scaling-classes.md` document — a catalog of O-classes with examples.
 - Guarantee: `S` numbers are comparable across 1.x versions.
 
-## Post-1.0 — potential directions
+## Post-1.0 — second language & beyond
 
-Unprioritized, by whatever proves valuable in practice:
+Unprioritized; by whatever proves valuable in practice.
 
-- Free energy `F = S − α·V` — the `check` threshold adapts to the repo's pace.
-- A Maxwell log: a list of commits with `ΔS < 0` over a period, who cooled the
-  system down.
-- An IDE plugin as a local VSIX / JetBrains plugin zip — a file's temperature in
-  the gutter in real time. Publishing to the VS Code Marketplace / JetBrains
-  Marketplace — only if the repository goes public.
-- Server mode: a background daemon tracking entropy between runs, shipping
-  metrics to Prometheus.
+- **A second language (TypeScript, via tree-sitter).** Moved here deliberately
+  (see the note at the top): the formula is already language-agnostic by design,
+  so this proves it on a second target rather than blocking the Go-side roadmap.
+  Best tackled with real TS fluency or a contributor who has it.
 - Support for more languages on demand: Python, Rust, Java.
 - Smart suggestion mode: for each hotspot, suggest which microstate is pushing
   the score up, and a refactoring template.
+- An IDE plugin as a local VSIX / JetBrains plugin zip — a file's temperature in
+  the gutter in real time.
+- Server mode: a background daemon tracking entropy between runs, shipping
+  metrics to Prometheus.
