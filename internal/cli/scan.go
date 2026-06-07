@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"path/filepath"
-	"text/tabwriter"
 
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
@@ -71,42 +68,26 @@ func runScan(cmd *cobra.Command, root string) error {
 	if scanTop > 0 && scanTop < len(files) {
 		files = files[:scanTop]
 	}
-	switch format {
-	case "json":
-		return writeJSON(out, files)
-	case "sarif":
-		return writeScanSARIF(out, files)
-	default:
-		return writeTable(out, files)
-	}
-}
 
-func writeScanSARIF(out io.Writer, files []pipeline.FileScore) error {
-	data, err := report.ScanSARIF(files, report.DefaultSARIFOptions(version.Version))
+	payload, err := renderScan(format, files)
 	if err != nil {
 		return err
 	}
-	_, err = out.Write(data)
+	_, err = out.Write(payload)
 	return err
 }
 
-func writeTable(out io.Writer, files []pipeline.FileScore) error {
-	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "PATH\tS\tT\tDOMINANT"); err != nil {
-		return err
+// renderScan formats scan scores for the chosen output format. All
+// rendering lives in internal/report; this is just the dispatch.
+func renderScan(format string, files []pipeline.FileScore) ([]byte, error) {
+	switch format {
+	case "json":
+		return report.ScanJSON(files)
+	case "sarif":
+		return report.ScanSARIF(files, report.DefaultSARIFOptions(version.Version))
+	default:
+		return []byte(report.ScanTable(files)), nil
 	}
-	for _, f := range files {
-		if _, err := fmt.Fprintf(tw, "%s\t%.2f\t%.2f\t%s\n", f.Path, f.S, f.T, f.Dominant); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
-}
-
-func writeJSON(out io.Writer, files []pipeline.FileScore) error {
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(files)
 }
 
 func init() {
