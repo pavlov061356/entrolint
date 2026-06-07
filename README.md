@@ -85,12 +85,7 @@ Microstates that contribute to S:
 Churn (how often a file changes) feeds the **temperature** T = S · ξ(churn) — the
 hottest spots are not merely complex but also frequently rewritten.
 
-Planned (see [ROADMAP](ROADMAP.md)):
-
-| Microstate           | When                       |
-| -------------------- | -------------------------- |
-| Scaling class (O(…)) | v0.2 — shipped (predictive)|
-| Duplication          | v0.3 — AST-subtree hashing |
+Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
 ## Terminology
 
