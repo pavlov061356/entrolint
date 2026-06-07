@@ -10,6 +10,19 @@ versions.
 
 ### Added
 
+- **`entrolint-check` composite GitHub Action** (`action.yml`) — drop-in
+  `uses: pavlov061356/entrolint@v0`. Downloads the released binary for the
+  runner's OS/arch (or builds from source with `version: source`), runs
+  `check`, and posts a sticky PR comment (ΔS, scaling class, top-3 changed-file
+  hotspots) keyed on the `<!-- entrolint-report -->` marker so re-runs update in
+  place. Inputs: `version`, `base`, `head`, `config`, `comment`,
+  `fail-on-gate`, `upload-sarif`, `github-token`. The gate verdict is derived
+  from the JSON `verdict` field, distinguishing a tripped gate from a real
+  error. Fork PRs (read-only token) skip the comment — the Action uses
+  `pull_request`, not `pull_request_target`.
+- **`.github/workflows/entrolint.yml`** — dogfoods entrolint on its own PRs
+  (advisory: comments + uploads SARIF, never blocks; not a required status
+  check). Closes the v0.1-deferred "dogfood entrolint in CI" item.
 - `--format` flag on `scan` and `check`. `scan` accepts
   `table` (default), `json`, `sarif`; `check` accepts `table`,
   `json`, `markdown`. The formats are per-command — `sarif` is
