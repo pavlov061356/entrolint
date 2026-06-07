@@ -8,6 +8,30 @@ versions.
 
 ## [Unreleased]
 
+### Added
+
+- `--format` flag on `scan` and `check`. `scan` accepts
+  `table` (default), `json`, `sarif`; `check` accepts `table`,
+  `json`, `markdown`. The formats are per-command — `sarif` is
+  scan-only, `markdown` is check-only.
+- `internal/report` package rendering the typed engine results into
+  integration formats: a GitHub-flavored Markdown PR-comment body
+  (`check --format markdown` — verdict, ΔS summary, scaling signals,
+  changed-file ΔS table, top-3 changed-file hotspots, with a hidden
+  `<!-- entrolint-report -->` marker for sticky-comment updates) and a
+  hand-rolled SARIF 2.1.0 log (`scan --format sarif`) for GitHub Code
+  Scanning — one `entrolint/high-entropy` result per file whose
+  temperature T clears a band floor (note ≥ 1.0, warning ≥ 1.5,
+  error ≥ 3.0), located at the file (line 1; entrolint scores per
+  file, not per line).
+
+### Deprecated
+
+- `--json` on `scan`/`check` — use `--format json`. The flag still
+  works as an alias and now prints a one-line deprecation notice to
+  stderr (stdout stays clean JSON). Passing both `--json` and
+  `--format` is an error.
+
 ## [0.3.1] — 2026-06-07
 
 ### Fixed

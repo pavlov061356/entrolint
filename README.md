@@ -58,12 +58,23 @@ entrolint scan --top 10
 entrolint check --base dev --head HEAD
 
 # Machine-readable report for CI / a PR bot:
-entrolint check --base origin/dev --head HEAD --json > delta.json
+entrolint check --base origin/dev --head HEAD --format json > delta.json
 ```
 
 `scan` prints a table with the columns `PATH | S | T | DOMINANT`. `check` prints
 a verdict line (`PASS`/`FAIL`) plus a per-file breakdown and returns exit code 1
 when `delta_s_max` is exceeded.
+
+### Output formats
+
+Both commands take `--format`:
+
+| Command | Formats                               | Notable use                    |
+| ------- | ------------------------------------- | ------------------------------ |
+| `scan`  | `table` (default), `json`, `sarif`    | `sarif` → GitHub Code Scanning |
+| `check` | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
+
+(`--json` is a deprecated alias for `--format json`.)
 
 ## Configuration
 
