@@ -167,3 +167,17 @@ Unprioritized; by whatever proves valuable in practice.
   the gutter in real time.
 - Server mode: a background daemon tracking entropy between runs, shipping
   metrics to Prometheus.
+
+## Quality bars & distribution
+
+Standing goals, pursued continuously rather than tied to one version — also the
+prerequisites for an [awesome-go](https://github.com/avelino/awesome-go) listing.
+
+- **Test coverage ≥ 80%** across non-trivial packages (currently ~78% overall;
+  `internal/cli`, `internal/scaling/typesx`, `internal/engine/gitx`, and the
+  `state_multiplier` detector lag and need attention).
+- **Go Report Card A-/A/A+**, with the badge in the README.
+- **Listed in awesome-go** (category *Code Analysis*). awesome-go requires
+  ≥5 months of repository history, so entrolint is eligible from ~late October
+  2026; the coverage and Go Report Card bars above are the prerequisites to
+  clear before submitting.
