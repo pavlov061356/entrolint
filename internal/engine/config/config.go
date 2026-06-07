@@ -30,7 +30,7 @@ type Config struct {
 
 	// ScalingClassMax is the inclusive ceiling on the scaling class
 	// the check gate tolerates. PRs whose aggregated class exceeds
-	// this fail. See docs/scaling.md §"Гейт".
+	// this fail. See docs/scaling.md#gate.
 	ScalingClassMax scaling.Class `yaml:"-"`
 
 	// ScalingBonusBeta is the global coefficient on the downgrade
@@ -39,13 +39,15 @@ type Config struct {
 	ScalingBonusBeta float64 `yaml:"scaling_bonus_beta"`
 }
 
-// Default returns the v0.2 baked-in configuration.
+// Default returns the v0.3 baked-in configuration.
 func Default() Config {
 	return Config{
 		Weights: map[string]float64{
-			"cyclomatic": 1.0,
-			"nesting":    0.8,
-			"length":     0.5,
+			"cyclomatic":  1.0,
+			"nesting":     0.8,
+			"coupling":    0.6,
+			"length":      0.5,
+			"duplication": 0.7,
 		},
 		DeltaSMax:        0.05,
 		ChurnSinceDays:   90,

@@ -63,7 +63,7 @@ func TestClass_JSONRoundTrip(t *testing.T) {
 }
 
 func TestClass_UnmarshalUnknownFallsToO1(t *testing.T) {
-	var c Class = ClassOk
+	c := ClassOk
 	if err := json.Unmarshal([]byte(`"O(n log n)"`), &c); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}

@@ -57,6 +57,21 @@ func Load(path string) (State, error) {
 	return s, nil
 }
 
+// HasAll reports whether the cached state has lognormal params for
+// every microstate in ms. A missing entry means the cache was written
+// before a new microstate was added — thermo.normalize would silently
+// return 0 for the missing one, dropping its weighted contribution
+// from S. Callers should treat HasAll=false as a cache miss and
+// recalibrate.
+func (s State) HasAll(names []string) bool {
+	for _, n := range names {
+		if p, ok := s.Microstates[n]; !ok || !p.Valid {
+			return false
+		}
+	}
+	return true
+}
+
 // Save writes state to path, creating or truncating the file.
 func Save(path string, s State) error {
 	if s.Version == 0 {

@@ -1,50 +1,66 @@
+version: "2"
 run:
-  timeout: 5m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
-    - govet
-    - staticcheck
-    - ineffassign
-    - unused
-    - revive
-    - gocyclo
     - gocognit
+    - gocyclo
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - prealloc
+    - revive
+    - staticcheck
+    - unused
+    - whitespace
+  settings:
+    gocognit:
+      min-complexity: 15
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: var-naming
+        - name: package-comments
+        - name: exported
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gocognit
+          - gocyclo
+          - gosec
+        path: _test\.go
+      - linters:
+          - errcheck
+          - gocognit
+          - gocyclo
+          - gosec
+          - unused
+        path: testdata/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofumpt
     - goimports
-    - gosec
-    - misspell
-    - whitespace
-    - prealloc
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-  gocognit:
-    min-complexity: 15
-  gofumpt:
-    extra-rules: true
-  revive:
-    rules:
-      - name: var-naming
-      - name: package-comments
-      - name: exported
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gocyclo
-        - gocognit
-        - gosec
-        - errcheck
-    - path: testdata/
-      linters:
-        - gocyclo
-        - gocognit
-        - gosec
-        - errcheck
-        - unused
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

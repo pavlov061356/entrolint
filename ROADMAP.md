@@ -1,155 +1,162 @@
 # entrolint — Roadmap
 
-Дорожная карта по версиям. Каждая версия = осмысленный пользовательский опыт,
-а не «технический промежуточный коммит». Версии нумеруются по semver, до 1.0
-формула и веса считаются нестабильными.
+A version-by-version roadmap. Each version = a meaningful user experience, not a
+"technical intermediate commit". Versions follow semver; until 1.0 the formula
+and weights are considered unstable.
 
-Репозиторий на момент написания приватный; пункты, зависящие от публичности
-(маркетплейсы, shields.io-бейдж, публичный `go install` через GOPROXY),
-заменены на внутренние эквиваленты или вынесены в условие «когда репа
-станет публичной».
+The repository is private at the time of writing; items that depend on being
+public (marketplaces, a shields.io badge, public `go install` via GOPROXY) are
+replaced with internal equivalents or gated behind "once the repo goes public".
 
 ## v0.1 — Minimum viable physics ✅
 
-Релиз 2026-06-02. Тег `v0.1.0` на master.
+Released 2026-06-02. Tag `v0.1.0` on master.
 
-**Цель:** получить честный `ΔS` за одну итерацию рефакторинга на Go-проекте.
-Доказать, что метафора превращается в число, которое не противоречит интуиции.
+**Goal:** get an honest `ΔS` for a single refactoring iteration on a Go project.
+Prove that the metaphor turns into a number that doesn't contradict intuition.
 
-- ✅ Реализация на Go, единый бинарь (`cmd/entrolint`).
-- ✅ Анализатор только для Go (`go/ast`, `go/parser`, `token.FileSet`).
-- ✅ Микросостояния: `cyclomatic`, `nesting`, `length` входят в S;
-  `churn` — в T (температура = S · ξ(churn)).
-- ✅ Формула `S = k · Σ wᵢ · ln(1 + mᵢ_norm)`; нормализация — lognormal
-  CDF с фиксированным флором 0.3, калибровка `k` на медиану 1 по корпусу.
-- ✅ Режим `scan` — таблица `PATH/S/T/DOMINANT`, сортировка по T, флаг `--top N`,
+- ✅ Implemented in Go, a single binary (`cmd/entrolint`).
+- ✅ Go-only analyzer (`go/ast`, `go/parser`, `token.FileSet`).
+- ✅ Microstates: `cyclomatic`, `nesting`, `length` contribute to S;
+  `churn` goes into T (temperature = S · ξ(churn)).
+- ✅ Formula `S = k · Σ wᵢ · ln(1 + mᵢ_norm)`; normalization via lognormal
+  CDF with a fixed floor of 0.3, `k` calibrated to a corpus median of 1.
+- ✅ `scan` mode — a `PATH/S/T/DOMINANT` table, sorted by T, flags `--top N`,
   `--json`, `--recalibrate`.
-- ✅ Режим `check` — `--base/--head`, агрегированный ΔS_total и ΔS_density,
-  exit 1 при ΔS_density > delta_s_max. JSON-конверт `{verdict, threshold, result}`.
-- ✅ Конфигурация: `.entrolint.yaml` с весами и `delta_s_max`. Кэш калибровки
-  `.entrolint.cache.json`, общий для scan и check.
-- 🟡 Dogfooding `entrolint` на самом entrolint — выполнено вручную перед
-  релизом; интеграция в CI как отдельный шаг отложена до v0.2.
+- ✅ `check` mode — `--base/--head`, aggregated ΔS_total and ΔS_density,
+  exit 1 when ΔS_density > delta_s_max. JSON envelope `{verdict, threshold, result}`.
+- ✅ Configuration: `.entrolint.yaml` with weights and `delta_s_max`. A
+  calibration cache `.entrolint.cache.json`, shared between scan and check.
+- 🟡 Dogfooding `entrolint` on entrolint itself — done manually before the
+  release; integration into CI as a separate step is deferred to v0.2.
 
-**Не входит:** coupling, duplication, O-классификация, HTML, SARIF, второй язык.
+**Out of scope:** coupling, duplication, O-classification, HTML, SARIF, a second language.
 
 ## Distribution while private
 
-Не отдельная версия — сквозной блок, актуальный до момента, когда репозиторий
-будет открыт.
+Not a separate version — a cross-cutting block, relevant until the repository is
+opened.
 
-- `go install` через публичный GOPROXY невозможен.
-  Документируем путь: `GOPRIVATE=github.com/<user>/*` + personal access token.
-- Основной канал доставки — GitHub Releases с собранными бинарями
-  (через `goreleaser`, конфиг в репе).
-- Опционально: приватный образ в GHCR `ghcr.io/<user>/entrolint:<tag>` для
-  использования из чужих CI-пайплайнов без сборки из исходников.
+- `go install` via the public GOPROXY is impossible.
+  We document the path: `GOPRIVATE=github.com/<user>/*` + a personal access token.
+- The primary delivery channel is GitHub Releases with prebuilt binaries
+  (via `goreleaser`, config in the repo).
+- Optionally: a private image in GHCR `ghcr.io/<user>/entrolint:<tag>` for use
+  from other CI pipelines without building from source.
 
 ## v0.2 — Predictive layer (scaling class) ✅
 
-Релиз 2026-06-04. Тег `v0.2.0` на master.
+Released 2026-06-04. Tag `v0.2.0` on master.
 
-**Цель:** дать предсказательную метрику поверх описательной. PR получает
-**два** ответа: «насколько грязнее сейчас» и «сколько будет стоить
-следующее похожее изменение».
+**Goal:** add a predictive metric on top of the descriptive one. A PR gets
+**two** answers: "how much dirtier is it now" and "how much will the next
+similar change cost".
 
-- ✅ Пакет `internal/scaling/` — детектирование O-классов из диффа,
-  общий `typesx` helper (Loader, FindOwningPackage, FindPackageByFile,
+- ✅ `internal/scaling/` package — detecting O-classes from the diff, with a
+  shared `typesx` helper (Loader, FindOwningPackage, FindPackageByFile,
   CollectEnums, ChangedFileSet, PosInChanged, Relativize).
-- ✅ Использование `go/types` через `golang.org/x/tools/go/packages` —
-  поиск реализаций интерфейсов и cross-package references.
-- ✅ Эвристики: `shotgun`, `implementor_scan`, `switch_case_symmetry`,
-  `identifier_fanout`, `state_multiplier`. Каталог и упрощения v0.2 —
+- ✅ Using `go/types` via `golang.org/x/tools/go/packages` — finding interface
+  implementations and cross-package references.
+- ✅ Heuristics: `shotgun`, `implementor_scan`, `switch_case_symmetry`,
+  `identifier_fanout`, `state_multiplier`. Catalog and v0.2 simplifications in
   `docs/scaling.md`.
-- ✅ Расширение отчёта `check`: к `ΔS` добавляется строка `scaling_class`
-  (max по сработавшим детекторам) — и в текстовом, и в JSON-выводе.
-- ⏭ Награда за `class downgrade` — отрицательный вклад в ΔS — отложено
-  до v0.3: требует базовой O-классификации, которая стабилизируется на
-  данных v0.2.
-- ⏭ Аннотация `// entrolint:scaling=O(implementors) reason="..."` —
-  отложено до v0.3 после первой обратной связи на ложные срабатывания.
+- ✅ Extending the `check` report: a `scaling_class` line is added next to `ΔS`
+  (max across the detectors that fired) — in both text and JSON output.
+- ⏭ A reward for `class downgrade` — a negative contribution to ΔS — deferred
+  to v0.3: it needs a baseline O-classification that stabilizes on v0.2 data.
+- ⏭ The `// entrolint:scaling=O(implementors) reason="..."` annotation —
+  deferred to v0.3 after the first feedback on false positives.
 
 ## v0.3 — Coupling & duplication
 
-**Цель:** закрыть оставшиеся два микросостояния из README.
+**Goal:** close the remaining two microstates from the README.
 
-- `coupling`: метрика на графе импортов (afferent/efferent, instability).
-- `duplication`: хеширование AST-поддеревьев (не строк) c порогом по размеру.
-- Веса коэффициентов пересматриваются вместе с появлением новых сигналов —
-  возможен breaking change в скоре `S` (отмечается в CHANGELOG).
+- 🟡 `coupling`: per-file import count as an efferent-coupling proxy (v0.3 MVP,
+  the `coupling` microstate, default weight 0.6). The full Ca/Ce/instability
+  graph needs a whole-tree pre-pass on both refs in `check` — deferred to v0.4+,
+  once such pre-pass infrastructure is needed for another detector.
+- 🟡 `duplication`: hashing AST subtrees (not lines) with a size threshold.
+  The v0.3 MVP implements **intra-file** duplication: structurally-identical
+  subtrees (hashed with identifier/literal normalization, a ≥12-node threshold,
+  a class contributing `(n-1)·s`, default weight 0.7). Cross-file copy-paste needs
+  the same whole-tree pre-pass on both refs as the full coupling graph — deferred
+  to v0.4+.
+- Coefficient weights are revisited as new signals appear — a breaking change to
+  the `S` score is possible (noted in the CHANGELOG).
 
 ## v0.4 — Internal CI integration
 
-**Цель:** превратить инструмент в продукт внутри рабочего контура,
-без зависимости от публичности репозитория.
+**Goal:** turn the tool into a product inside the work loop, without depending on
+the repository being public.
 
-- GitHub Action `entrolint-check` как воркфлоу внутри репы — drop-in,
-  конфигурация одним файлом.
-- Бот, оставляющий PR-комментарий: ΔS, scaling class, топ-3 hotspot
-  в изменённых файлах.
-- SARIF-вывод для GitHub Code Scanning. Если GHAS не подключён —
-  SARIF пишется как артефакт CI и читается людьми.
-- Внутренний бейдж: статический SVG, генерируемый в CI и складываемый как
-  артефакт или в приватную ветку `gh-pages` — для внутренних дашбордов.
-- Публичный shields.io-бейдж — только когда репа станет публичной.
+- An `entrolint-check` GitHub Action as a workflow inside the repo — drop-in,
+  configured by a single file.
+- A bot that leaves a PR comment: ΔS, scaling class, top-3 hotspots in the
+  changed files.
+- SARIF output for GitHub Code Scanning. If GHAS isn't enabled — SARIF is written
+  as a CI artifact and read by humans.
+- An internal badge: a static SVG generated in CI and stored as an artifact or in
+  a private `gh-pages` branch — for internal dashboards.
+- A public shields.io badge — only once the repo goes public.
 
-## v0.5 — Второй язык (TypeScript)
+## v0.5 — A second language (TypeScript)
 
-**Цель:** доказать, что формула языко-агностична, а не Go-специфична.
+**Goal:** prove the formula is language-agnostic, not Go-specific.
 
-- Подключение tree-sitter (через cgo-биндинги) или внешний tsc.
-- Анализатор `internal/analyzer/typescript/`.
-- Микросостояния общие; реализация парсинга разная.
-- Калибровка по новым процентилям из TS-корпуса.
-- `coupling` и `scaling class` — частично, в той мере, в какой tree-sitter
-  даёт информацию о cross-references.
+- Wiring up tree-sitter (via cgo bindings) or an external tsc.
+- An `internal/analyzer/typescript/` analyzer.
+- Microstates are shared; the parsing implementation differs.
+- Calibration against new percentiles from a TS corpus.
+- `coupling` and `scaling class` — partially, to the extent tree-sitter provides
+  cross-reference information.
 
 ## v0.6 — Experimental microstates
 
-**Цель:** проверить более тонкие сигналы и закрепить только те, что
-выживают на dogfooding-данных.
+**Goal:** test subtler signals and keep only those that survive on dogfooding
+data.
 
-- `shannon_identifiers` — энтропия Шеннона по именам идентификаторов модуля.
-- `shannon_ast` — энтропия по формам AST-поддеревьев.
-- `comment_anomaly` — отклонение соотношения комментарии/код.
-- `todo_density` — частота `TODO`/`FIXME` с учётом возраста.
-- Все включаются флагом `--experimental` и не входят в основной `S` без
-  явного включения в `.entrolint.yaml`.
+- `shannon_identifiers` — Shannon entropy over a module's identifier names.
+- `shannon_ast` — entropy over AST-subtree shapes.
+- `comment_anomaly` — deviation of the comment-to-code ratio.
+- `todo_density` — frequency of `TODO`/`FIXME`, weighted by age.
+- All are enabled by a `--experimental` flag and don't enter the main `S` without
+  being explicitly turned on in `.entrolint.yaml`.
 
-## v0.7 — HTML heatmap & визуализация
+## v0.7 — HTML heatmap & visualization
 
-**Цель:** карта температур, которую не стыдно показать команде.
+**Goal:** a heat map you wouldn't be ashamed to show the team.
 
-- Статический HTML-отчёт `entrolint scan --html out/`.
-- Деревовидная heatmap (squarified treemap) по T.
-- Drill-down: клик по файлу — разбор по микросостояниям.
-- Фазовый портрет: график `S(t)` по истории git за окно (можно
-  предзаписать в CI как артефакт).
+- A static HTML report `entrolint scan --html out/`.
+- A tree heatmap (squarified treemap) by T.
+- Drill-down: click a file to see the per-microstate breakdown.
+- A phase portrait: an `S(t)` graph over git history for a window (can be
+  precomputed in CI as an artifact).
 
-## v1.0 — Стабильная формула
+## v1.0 — A stable formula
 
-**Цель:** заморозить публичный контракт. До 1.0 формула и веса могут
-меняться; с 1.0 — только по семверу.
+**Goal:** freeze the public contract. Before 1.0 the formula and weights may
+change; from 1.0 on — only per semver.
 
-- Калибровочный корпус из публичных Go/TS-репозиториев (entrolint
-  анализирует их, но сам остаётся приватным). Ground-truth для регрессий
-  формирует автор, не внешнее сообщество.
-- Документ `docs/formula.md` — окончательная математика, обоснование
-  весов, протокол калибровки.
-- Документ `docs/scaling-classes.md` — каталог O-классов с примерами.
-- Гарантия: цифры `S` сравнимы между версиями 1.x.
+- A calibration corpus from public Go/TS repositories (entrolint analyzes them
+  but stays private itself). The author forms the regression ground truth, not an
+  external community.
+- The `docs/formula.md` document — final math, weight justification, calibration
+  protocol.
+- The `docs/scaling-classes.md` document — a catalog of O-classes with examples.
+- Guarantee: `S` numbers are comparable across 1.x versions.
 
-## Post-1.0 — потенциальные направления
+## Post-1.0 — potential directions
 
-Без приоритета, по тому, что докажет ценность на практике:
+Unprioritized, by whatever proves valuable in practice:
 
-- Free energy `F = S − α·V` — порог `check` адаптируется к темпу репы.
-- Maxwell-лог: список коммитов с `ΔS < 0` за период, кто остудил систему.
-- IDE-плагин в формате локального VSIX / JetBrains plugin zip — температура
-  файла в gutter в реальном времени. Публикация в VS Code Marketplace /
-  JetBrains Marketplace — только если репозиторий станет публичным.
-- Server mode: фоновый демон, отслеживающий энтропию между запусками,
-  отправляющий метрики в Prometheus.
-- Поддержка ещё языков по востребованности: Python, Rust, Java.
-- Smart suggestion mode: для каждого hotspot предложить, какое именно
-  микросостояние тянет балл вверх, и шаблон рефакторинга.
+- Free energy `F = S − α·V` — the `check` threshold adapts to the repo's pace.
+- A Maxwell log: a list of commits with `ΔS < 0` over a period, who cooled the
+  system down.
+- An IDE plugin as a local VSIX / JetBrains plugin zip — a file's temperature in
+  the gutter in real time. Publishing to the VS Code Marketplace / JetBrains
+  Marketplace — only if the repository goes public.
+- Server mode: a background daemon tracking entropy between runs, shipping
+  metrics to Prometheus.
+- Support for more languages on demand: Python, Rust, Java.
+- Smart suggestion mode: for each hotspot, suggest which microstate is pushing
+  the score up, and a refactoring template.

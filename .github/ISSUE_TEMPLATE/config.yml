@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/pavlov061356/entrolint/discussions
+    about: Ask "how do I…", propose a microstate, or share results.
+  - name: Report a security vulnerability
+    url: https://github.com/pavlov061356/entrolint/security/advisories/new
+    about: Do NOT file security issues in the public tracker — use private vulnerability reporting.
+  - name: Documentation — formula
+    url: https://github.com/pavlov061356/entrolint/blob/master/docs/formula.md
+    about: The canonical spec for S, T, ΔS, normalization, and weights.
+  - name: Documentation — scaling classes
+    url: https://github.com/pavlov061356/entrolint/blob/master/docs/scaling.md
+    about: The catalog of O-classes and the v0.2 simplifications.

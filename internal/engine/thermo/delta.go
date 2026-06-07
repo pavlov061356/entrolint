@@ -78,8 +78,7 @@ type FileDelta struct {
 // Delta is the aggregated PR-level entropy change.
 //
 // Total is the signed Σ of all file contributions. Density is
-// Total / max(1, LinesChanged) per docs/formula.md §"ΔS для режима
-// check" — a small positive Density on a large PR fails less
+// Total / max(1, LinesChanged) per docs/formula.md#δs-for-check-mode — a small positive Density on a large PR fails less
 // aggressively than the same Total on a tiny PR. Files holds an
 // owned (copied) breakdown — safe for callers to sort, mutate, or
 // hand to a goroutine.
@@ -162,8 +161,7 @@ func ComputeDelta(files []FileDelta, linesChanged int) Delta {
 
 // Fails reports whether the PR exceeds the gate threshold.
 //
-// Strict `Density > densityMax` per formula doc §"Гейт срабатывает
-// по плотности". Two fail-closed guards: NaN Density (degenerate
+// Strict `Density > densityMax` per docs/formula.md#the-gate-fires-on-density. Two fail-closed guards: NaN Density (degenerate
 // upstream score / mixed ±Inf cancellation) and +Inf Density both
 // trip the gate so corruption in the pipeline cannot silently pass.
 // A PR that reduces entropy (negative Density) never fails for any

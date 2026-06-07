@@ -197,9 +197,11 @@ func B(x int) {
 		K:       999.0,
 		Alpha:   0.5,
 		Microstates: map[string]thermo.LogNormalParams{
-			"cyclomatic": {Mu: 0, Sigma: 1, Valid: true},
-			"nesting":    {Mu: 0, Sigma: 1, Valid: true},
-			"length":     {Mu: 0, Sigma: 1, Valid: true},
+			"cyclomatic":  {Mu: 0, Sigma: 1, Valid: true},
+			"nesting":     {Mu: 0, Sigma: 1, Valid: true},
+			"length":      {Mu: 0, Sigma: 1, Valid: true},
+			"coupling":    {Mu: 0, Sigma: 1, Valid: true},
+			"duplication": {Mu: 0, Sigma: 1, Valid: true},
 		},
 	}
 	if err := cache.Save(cachePath, bogus); err != nil {
@@ -224,6 +226,51 @@ func B(x int) {
 	if withCache.Files[0].S <= recal.Files[0].S*10 {
 		t.Errorf("expected bogus cache S (%v) to be much larger than recalibrated S (%v)",
 			withCache.Files[0].S, recal.Files[0].S)
+	}
+}
+
+// TestScan_StaleCacheRecalibratesOnNewMicrostate pins the v0.3
+// regression where adding a new microstate left old caches valid but
+// missing the new lognormal — thermo.normalize would silently return 0
+// and the new microstate's weighted contribution would vanish from S.
+// resolveEngine now treats incomplete cache as a miss.
+func TestScan_StaleCacheRecalibratesOnNewMicrostate(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		"a.go": `package p
+
+import "fmt"
+
+func A() { fmt.Println() }
+`,
+	})
+	cachePath := filepath.Join(dir, ".entrolint.cache.json")
+
+	// Cache without coupling — emulates a v0.2 cache after upgrading to v0.3.
+	stale := cache.State{
+		Version: cache.SchemaVersion,
+		K:       1.0,
+		Alpha:   0.5,
+		Microstates: map[string]thermo.LogNormalParams{
+			"cyclomatic": {Mu: 0, Sigma: 1, Valid: true},
+			"nesting":    {Mu: 0, Sigma: 1, Valid: true},
+			"length":     {Mu: 0, Sigma: 1, Valid: true},
+		},
+	}
+	if err := cache.Save(cachePath, stale); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if _, err := Scan(ScanOptions{Root: dir, Config: config.Default(), CachePath: cachePath}); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	reloaded, err := cache.Load(cachePath)
+	if err != nil {
+		t.Fatalf("Load after scan: %v", err)
+	}
+	if _, ok := reloaded.Microstates["coupling"]; !ok {
+		t.Error("expected fresh calibration to add coupling lognormal — stale cache survived")
 	}
 }
 

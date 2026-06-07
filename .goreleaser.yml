@@ -1,0 +1,67 @@
+# goreleaser v2 schema. https://goreleaser.com/customization/
+#
+# Scope for the first release iteration:
+#   - Single binary `cmd/entrolint`.
+#   - linux/darwin × amd64/arm64. CGO off (testcontainers is dev-only).
+#   - tar.gz archives + SHA-256 checksums.
+#   - Release notes are GitHub's auto-generated PR list (CHANGELOG.md
+#     section extraction is planned for a follow-up).
+#
+# Intentionally NOT here yet: nfpm (.deb/.rpm), Homebrew tap, Scoop,
+# Snapcraft, AUR. Add when there is a user signal.
+
+version: 2
+
+project_name: entrolint
+
+# No before.hooks intentionally. `go mod tidy` here would silently fix a
+# dirty go.mod at release time, hiding state drift from the test gate.
+# Mod-tidiness is enforced in CI via `make mod-check`.
+
+builds:
+  - id: entrolint
+    main: ./cmd/entrolint
+    binary: entrolint
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/pavlov061356/entrolint/internal/version.Version={{ .Version }}
+      - -X github.com/pavlov061356/entrolint/internal/version.Commit={{ .ShortCommit }}
+      # .Date is the build time in RFC3339 UTC (with Z). Matches the
+      # Makefile build flag and version.go's "ISO 8601 UTC" contract.
+      # .CommitDate would carry the commit author's local TZ offset.
+      - -X github.com/pavlov061356/entrolint/internal/version.Date={{ .Date }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  use: github-native
+
+release:
+  draft: false
+  prerelease: auto
+  mode: replace

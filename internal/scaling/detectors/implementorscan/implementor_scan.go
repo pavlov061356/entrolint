@@ -9,8 +9,7 @@
 // in the PR diff. A hit fires at the interface's declaration site so
 // the report points the reader at the cause, not at every leaf.
 //
-// v0.2 limitations (documented in docs/scaling.md §"Известные
-// упрощения" — code comments below name the exact handling):
+// v0.2 limitations (documented in docs/scaling.md#known-simplifications-v02 — code comments below name the exact handling):
 //   - Generic interfaces (with type parameters) are skipped:
 //     types.Implements is undefined on them.
 //   - Stdlib and external-dep interfaces are never candidates:
@@ -39,7 +38,7 @@ const (
 	DefaultMinImplementors = 2
 
 	// DefaultTouchedRatio is the v0.2 starting threshold per
-	// docs/scaling.md §"Эвристики".
+	// docs/scaling.md#heuristics.
 	DefaultTouchedRatio = 0.5
 
 	name = "implementor_scan"

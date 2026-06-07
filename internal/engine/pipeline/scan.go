@@ -51,12 +51,18 @@ type ScanResult struct {
 	Files []FileScore `json:"files"`
 }
 
-// structuralMicrostates lists v0.1 contributors to S (churn lives only in T).
+// structuralMicrostates lists the contributors to S (churn lives only in T).
+// v0.1: cyclomatic, nesting, length. v0.3 adds coupling (per-file import count
+// as efferent-coupling proxy) and duplication (intra-file AST-subtree clones);
+// cross-file coupling (Ca/Ce graph) and cross-file duplication are both deferred
+// to v0.4+ as they need a whole-tree pre-pass that check's blob scoring cannot give.
 func structuralMicrostates() []microstate.Microstate {
 	return []microstate.Microstate{
 		microstate.Cyclomatic{},
 		microstate.Nesting{},
 		microstate.Length{},
+		microstate.Coupling{},
+		microstate.Duplication{},
 	}
 }
 
@@ -87,18 +93,28 @@ func analyzeTree(opts ScanOptions) ([]microstate.File, error) {
 
 func resolveEngine(opts ScanOptions, ms []microstate.Microstate, files []microstate.File) *thermo.Engine {
 	if !opts.Recalibrate && opts.CachePath != "" {
-		if state, err := cache.Load(opts.CachePath); err == nil {
+		if state, err := cache.Load(opts.CachePath); err == nil && state.HasAll(microstateNames(ms)) {
 			return thermo.NewEngine(ms, opts.Config.Weights, state.K, state.Alpha, state.Microstates)
-		} else if !errors.Is(err, fs.ErrNotExist) {
+		} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			// Malformed cache: fall through to fresh calibration.
 			_ = err
 		}
+		// Stale cache (missing lognormal for a new microstate): also
+		// fall through — fresh calibration will overwrite below.
 	}
 	engine := thermo.Calibrate(ms, opts.Config.Weights, files)
 	if opts.CachePath != "" {
 		_ = cache.Save(opts.CachePath, cache.StateFromEngine(engine))
 	}
 	return engine
+}
+
+func microstateNames(ms []microstate.Microstate) []string {
+	names := make([]string, len(ms))
+	for i, m := range ms {
+		names[i] = m.Name()
+	}
+	return names
 }
 
 func rank(engine *thermo.Engine, files []microstate.File) []FileScore {

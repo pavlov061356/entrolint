@@ -9,7 +9,7 @@
 // when many switches over the same enum are touched in one PR, the
 // pattern is almost always either a freshly added case or a renamed
 // constant, both legitimate O(k) ripples. Documented in
-// docs/scaling.md §"Известные упрощения".
+// docs/scaling.md#known-simplifications-v02.
 package switchsymmetry
 
 import (

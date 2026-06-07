@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Full history so:
+          # 1. goreleaser can compute the version via `git describe`.
+          # 2. The branch-guard below can ask `git branch -r --contains` if
+          #    the tagged commit lives on master.
+          fetch-depth: 0
+
+      - name: Verify tag is on master
+        run: |
+          if ! git branch -r --contains "$GITHUB_SHA" | grep -qE '^\s*origin/master$'; then
+            echo "::error::Tag ${GITHUB_REF##*/} points at $GITHUB_SHA which is not on origin/master — gitflow violation, refusing to release."
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Install dev tools
+        run: make tools
+
+      - name: Run CI gate before release
+        # Mirror the PR-time gate: if the tagged commit can't pass make ci
+        # right now (CVE landed since last PR, mod drift, etc.), refuse
+        # to ship a broken release.
+        run: make ci
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,109 +1,123 @@
 # entrolint
 
+[![CI](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml/badge.svg)](https://github.com/pavlov061356/entrolint/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pavlov061356/entrolint.svg)](https://pkg.go.dev/github.com/pavlov061356/entrolint)
+[![Go version](https://img.shields.io/github/go-mod/go-version/pavlov061356/entrolint)](go.mod)
+[![License: MIT](https://img.shields.io/github/license/pavlov061356/entrolint)](LICENSE)
+
 > Code rots toward disorder. `entrolint` measures the entropy — and keeps it from growing on every PR.
 
-`entrolint` оценивает качество и сложность поддержки кода через метафору
-**энтропии из статистической физики**. Чистый, упорядоченный, легко изменяемый
-код — это система с **низкой энтропией**. Запутанный, сильно связанный, трудно
-поддерживаемый код — система с **высокой энтропией**.
+`entrolint` gauges code quality and maintainability through the metaphor of
+**entropy from statistical physics**. Clean, ordered, easy-to-change code is a
+system with **low entropy**. Tangled, tightly-coupled, hard-to-maintain code is
+a system with **high entropy**.
 
-И как во втором начале термодинамики, энтропия кодовой базы без вмешательства
-только растёт. Задача `entrolint` — измерять её и не давать ей расти незаметно.
+And just as in the second law of thermodynamics, the entropy of a codebase only
+grows when left unattended. `entrolint`'s job is to measure it and keep it from
+growing unnoticed.
 
-## Зачем
+> 🔒 Runs entirely locally — no network calls, no telemetry, ever.
 
-Обычные линтеры ловят отдельные нарушения стиля. `entrolint` смотрит на картину
-целиком: даёт одно число — энтропию — которое отражает, насколько тяжело будет
-поддерживать этот код, и показывает, как это число меняется с каждым изменением.
+## Why
 
-## Два режима
+Ordinary linters catch individual style violations. `entrolint` looks at the
+whole picture: it gives you a single number — entropy — that reflects how hard
+the code will be to maintain, and shows how that number changes with every change.
 
-### `scan` — карта температур всей репы
+## Two modes
 
-Проходит по кодовой базе, считает энтропийный балл (S) для каждого файла и
-пакета и подсвечивает **горячие точки** (hotspots) — места с самой высокой
-энтропией. Это первые кандидаты на рефакторинг.
+### `scan` — a heat map of the whole repo
 
-### `check` — гейт на пулл-реквест
+Walks the codebase, computes an entropy score (S) for every file and package, and
+highlights **hotspots** — the places with the highest entropy. These are the
+first candidates for refactoring.
 
-Считает **ΔS** (дельту энтропии) между base и head: повысило изменение беспорядок
-или понизило. Встраивается в CI и не пропускает PR, которые ухудшают
-поддерживаемость сверх заданного порога.
+### `check` — a pull-request gate
 
-> Положительная ΔS = код стало тяжелее поддерживать.
+Computes **ΔS** (the entropy delta) between base and head: did the change raise
+disorder or lower it. It plugs into CI and blocks PRs that worsen maintainability
+beyond a configured threshold.
 
-## Быстрый старт
+> Positive ΔS = the code became harder to maintain.
+
+## Installation
 
 ```bash
-# Самые «горячие» 10 файлов репы:
+go install github.com/pavlov061356/entrolint/cmd/entrolint@latest
+```
+
+Or download a prebuilt binary from the [latest release](https://github.com/pavlov061356/entrolint/releases/latest).
+
+## Quick start
+
+```bash
+# The 10 hottest files in the repo:
 entrolint scan --top 10
 
-# Гейт на PR: сравнить feature-ветку с dev, провалиться при превышении порога.
+# PR gate: compare a feature branch against dev, fail if the threshold is exceeded.
 entrolint check --base dev --head HEAD
 
-# Машино-читаемый отчёт для CI / PR-бота:
+# Machine-readable report for CI / a PR bot:
 entrolint check --base origin/dev --head HEAD --json > delta.json
 ```
 
-`scan` печатает таблицу со столбцами `PATH | S | T | DOMINANT`. `check`
-печатает строку вердикта (`PASS`/`FAIL`) + разложение по файлам и возвращает
-exit code 1 при превышении `delta_s_max`.
+`scan` prints a table with the columns `PATH | S | T | DOMINANT`. `check` prints
+a verdict line (`PASS`/`FAIL`) plus a per-file breakdown and returns exit code 1
+when `delta_s_max` is exceeded.
 
-## Конфигурация
+## Configuration
 
-`.entrolint.yaml` в корне репозитория (опционально — без файла используются
-дефолты):
+`.entrolint.yaml` at the repository root (optional — defaults are used when the
+file is absent):
 
 ```yaml
 weights:
   cyclomatic: 1.0
   nesting:    0.8
+  coupling:   0.6
   length:     0.5
-delta_s_max:       0.05   # порог ΔS_density для check
-churn_since_days:  90     # окно для churn-фактора (входит в T, не в S)
+  duplication: 0.7
+delta_s_max:       0.05   # ΔS_density threshold for check
+churn_since_days:  90     # window for the churn factor (lives in T, not S)
 ```
 
-## Модель энтропии
+## The entropy model
 
-Энтропия складывается из взвешенной суммы «микросостояний» — отдельных измеримых
-факторов беспорядка. В духе формулы Больцмана **S = k · ln(W)**: чем больше
-число способов, которыми код может быть запутан, тем выше энтропия.
+Entropy is a weighted sum of "microstates" — individual measurable factors of
+disorder. In the spirit of Boltzmann's formula **S = k · ln(W)**: the more ways
+the code can be tangled, the higher the entropy.
 
-В v0.1 микросостояния, входящие в S:
+Microstates that contribute to S:
 
-| Микросостояние            | О чём                                        |
-| ------------------------- | -------------------------------------------- |
-| Цикломатическая сложность | сколько ветвлений в коде                     |
-| Глубина вложенности       | насколько глубоко вложены блоки              |
-| Длина функций / файлов    | размер единиц кода                           |
+| Microstate             | What it measures                        | Since |
+| ---------------------- | --------------------------------------- | ----- |
+| Cyclomatic complexity  | how many branches there are in the code | v0.1  |
+| Nesting depth          | how deeply blocks are nested            | v0.1  |
+| Function / file length | the size of code units                  | v0.1  |
+| Coupling               | how many import specs a file has        | v0.3  |
+| Duplication            | repeated AST subtrees within a file     | v0.3  |
 
-Churn (как часто файл меняется) входит в **температуру** T = S · ξ(churn) —
-горячими становятся не просто сложные, а ещё и часто переписываемые места.
+Churn (how often a file changes) feeds the **temperature** T = S · ξ(churn) — the
+hottest spots are not merely complex but also frequently rewritten.
 
-Планируется (см. [ROADMAP](ROADMAP.md)):
+Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
-| Микросостояние         | Когда                                    |
-| ---------------------- | ---------------------------------------- |
-| Scaling class (O(…))   | v0.2 ✅ — предсказательный слой           |
-| Связанность (coupling) | v0.3 — графовая метрика по импортам      |
-| Дублирование           | v0.3 — хеширование AST-поддеревьев       |
+## Terminology
 
-## Терминология
+- **Entropy (S)** — a measure of disorder and maintenance difficulty. Higher = worse.
+- **ΔS** — the change in entropy introduced by a pull request.
+- **Hotspot** — a file or package with high entropy.
+- **Microstate** — an individual factor contributing to S.
+- **Temperature** — a file's normalized entropy, used for the heat map.
 
-- **Энтропия (S)** — мера беспорядка и сложности поддержки. Выше = хуже.
-- **ΔS** — изменение энтропии, вносимое пулл-реквестом.
-- **Горячая точка (hotspot)** — файл или пакет с высокой энтропией.
-- **Микросостояние** — отдельный фактор, вносящий вклад в S.
-- **Температура** — нормализованная энтропия файла для визуализации карты.
+## Status
 
-## Статус
+📦 **v0.2** — a predictive layer has been added on top of `scan`/`check`:
+O-class detectors (`shotgun`, `implementor_scan`, `switch_case_symmetry`,
+`identifier_fanout`, `state_multiplier`) emit a `scaling_class` line next to `ΔS`.
+The formula, weights, and threshold are considered unstable until v1.0 — `S`
+values may shift between releases.
 
-📦 **v0.2** — к `scan`/`check` добавлен предсказательный слой:
-детекторы O-классов (`shotgun`, `implementor_scan`, `switch_case_symmetry`,
-`identifier_fanout`, `state_multiplier`) дают строку `scaling_class` рядом
-с `ΔS`. Формула, веса и порог считаются нестабильными до v1.0 — между
-релизами числа `S` могут смещаться.
+## License
 
-## Лицензия
-
-MIT (см. [LICENSE](LICENSE)).
+MIT (see [LICENSE](LICENSE)).

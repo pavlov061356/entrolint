@@ -547,7 +547,7 @@ func S2(k AliasKind) int {
 }
 
 func TestSwitchSymmetry_TestFileSwitchesNotCounted(t *testing.T) {
-	// Spec says "switch'ей по этому типу в пакете" — production code,
+	// Spec says "switches over this type in the package" — production code,
 	// not _test.go. Tests=false in the loader is the load-time
 	// defense; this test pins the contract from the outside.
 	root := fixture(t, map[string]string{

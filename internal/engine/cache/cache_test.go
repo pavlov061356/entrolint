@@ -83,6 +83,41 @@ func TestLoad_RejectsUnknownVersion(t *testing.T) {
 	}
 }
 
+func TestHasAll(t *testing.T) {
+	s := sampleState()
+	tests := []struct {
+		name  string
+		names []string
+		want  bool
+	}{
+		{"all present", []string{"cyclomatic", "nesting", "length"}, true},
+		{"subset", []string{"cyclomatic"}, true},
+		{"empty set", []string{}, true},
+		{"missing one (new microstate added)", []string{"cyclomatic", "nesting", "length", "coupling"}, false},
+		{"missing all", []string{"coupling"}, false},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := s.HasAll(tc.names); got != tc.want {
+				t.Errorf("HasAll(%v) = %v, want %v", tc.names, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHasAll_InvalidParamsCountAsMissing(t *testing.T) {
+	s := State{
+		Microstates: map[string]thermo.LogNormalParams{
+			"cyclomatic": {Mu: 1, Sigma: 1, Valid: true},
+			"coupling":   {Valid: false},
+		},
+	}
+	if s.HasAll([]string{"cyclomatic", "coupling"}) {
+		t.Error("HasAll returned true with Invalid params — should treat as missing")
+	}
+}
+
 func TestSave_FillsMissingVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.json")
 	s := sampleState()
