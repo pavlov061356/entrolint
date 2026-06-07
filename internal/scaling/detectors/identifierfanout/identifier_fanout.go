@@ -11,8 +11,8 @@
 //  4. If total references ≥ MinReferences AND touched refs / total
 //     ≥ TouchedRatio, fire O(k) at the decl site with size = total.
 //
-// v0.2 simplification documented in docs/scaling.md §"Известные
-// упрощения": we require the def to be touched (proxy for "PR
+// v0.2 simplification documented in docs/scaling.md#known-simplifications-v02:
+// we require the def to be touched (proxy for "PR
 // changed the symbol") rather than a per-edit AST diff. Self-package
 // uses (a function calling itself, or one symbol referencing another
 // in the same file) count toward both numerator and denominator —

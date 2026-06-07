@@ -34,7 +34,7 @@ type Input struct {
 
 // Hit is one detector firing on one site. Size is the architectural
 // span the class claims (k implementors, n cases, n files for shotgun).
-// JSON field names track docs/scaling.md §"Per-change vs aggregate" —
+// JSON field names track docs/scaling.md#per-change-vs-aggregate —
 // the spec doc is the canonical reference for the wire shape.
 type Hit struct {
 	Detector string `json:"name"`
@@ -57,7 +57,7 @@ type FileResult struct {
 
 // Result is the PR-level scaling verdict. Class is the max over all
 // per-file classes. DowngradeBonus is the negative ΔS contribution
-// from class downgrades — formula in docs/scaling.md §"Downgrade reward".
+// from class downgrades — formula in docs/scaling.md#downgrade-reward--proportional.
 type Result struct {
 	Class          Class        `json:"class"`
 	Files          []FileResult `json:"scaling_breakdown"`

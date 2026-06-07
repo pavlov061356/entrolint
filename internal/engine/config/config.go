@@ -30,7 +30,7 @@ type Config struct {
 
 	// ScalingClassMax is the inclusive ceiling on the scaling class
 	// the check gate tolerates. PRs whose aggregated class exceeds
-	// this fail. See docs/scaling.md §"Гейт".
+	// this fail. See docs/scaling.md#gate.
 	ScalingClassMax scaling.Class `yaml:"-"`
 
 	// ScalingBonusBeta is the global coefficient on the downgrade

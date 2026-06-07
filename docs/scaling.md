@@ -1,92 +1,92 @@
-# `entrolint` — спецификация scaling class (v0.2)
+# `entrolint` — scaling class specification (v0.2)
 
-Этот документ — каноническая ссылка на «scaling class»: предсказательную
-метрику, которую `entrolint` выдаёт для PR параллельно с описательным
-`ΔS`. Документ покрывает релизную серию v0.2; до 1.0 классы, эвристики
-и коэффициенты считаются нестабильными.
+This document is the canonical reference for the "scaling class": the predictive
+metric that `entrolint` emits for a PR alongside the descriptive `ΔS`. It covers
+the v0.2 release series; before 1.0 the classes, heuristics, and coefficients are
+considered unstable.
 
-## Область применения
+## Scope
 
-- **v0.2** — единственный язык анализа: Go. Источник AST — stdlib
-  `go/ast`; источник типов — `golang.org/x/tools/go/packages`.
-- Пять O-классов: `O(1)`, `O(k)`, `O(n)`, `O(n·m)`, `O(2ⁿ)`.
-- Эвристики статические, без LLM. Каждая возвращает класс на одно
-  «затронутое место»; PR-уровень агрегируется максимумом.
-- Веса downgrade-бонуса — захардкоженные дефолты в бинаре, переопределяются
-  через `.entrolint.yaml`.
+- **v0.2** — the only analysis language: Go. The AST source is the stdlib
+  `go/ast`; the type source is `golang.org/x/tools/go/packages`.
+- Five O-classes: `O(1)`, `O(k)`, `O(n)`, `O(n·m)`, `O(2ⁿ)`.
+- The heuristics are static, no LLM. Each returns a class for a single "touched
+  site"; the PR level is aggregated by maximum.
+- The downgrade-bonus weights are hardcoded defaults in the binary, overridable
+  via `.entrolint.yaml`.
 
-## Зачем отдельный класс рядом с `ΔS`
+## Why a separate class alongside `ΔS`
 
-`ΔS` — **описательная** метрика: насколько грязнее система стала *прямо
-сейчас*. Scaling class — **предсказательная**: насколько дорого встанет
-*следующее похожее* изменение.
+`ΔS` is a **descriptive** metric: how much dirtier the system became *right now*.
+The scaling class is **predictive**: how expensive the *next similar* change will
+be.
 
-Эти две метрики не взаимозаменяемы:
+The two metrics are not interchangeable:
 
-- PR с микроскопическим `ΔS` (5 строк в проекте на 100k) может зашить
-  `O(implementors)` — новый enum-case, который теперь обязан появиться
-  во всех `switch`'ах. Будущая цена катастрофична, а текущий `ΔS` её не
-  видит.
-- PR с большим положительным `ΔS` (новый сложный пакет) может остаться
-  `O(1)` — заперт в собственных границах. Тяжёлый сейчас, дешёвый потом.
-- Рефакторинг, схлопывающий switch-по-enum в полиморфизм, понижает
-  класс с `O(k)` до `O(1)`. Это структурный выигрыш, который `ΔS` через
-  цикломатику и длину ловит лишь частично.
+- A PR with a microscopic `ΔS` (5 lines in a 100k project) can wire in
+  `O(implementors)` — a new enum case that must now appear in every `switch`. Its
+  future cost is catastrophic, and the current `ΔS` doesn't see it.
+- A PR with a large positive `ΔS` (a new complex package) can stay `O(1)` —
+  locked within its own boundaries. Heavy now, cheap later.
+- A refactor that collapses a switch-over-enum into polymorphism lowers the class
+  from `O(k)` to `O(1)`. That's a structural win that `ΔS` — through cyclomatic
+  and length — catches only partially.
 
-Поэтому v0.2 выдаёт оба числа и оба влияют на гейт — но влияют **по-разному**
-(см. §«Связь с `ΔS_total`»).
+So v0.2 emits both numbers and both affect the gate — but they affect it
+**differently** (see [Class upgrades are not penalized in `ΔS`](#class-upgrades-are-not-penalized-in-δs)).
 
-## Классы
+## Classes
 
-| Класс            | Когда                                                                                       | Пример                                                                |
-| ---------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `O(1)`           | локальное изменение без архитектурного fan-out                                              | новый приватный helper, рефакторинг внутри функции                    |
-| `O(k)`           | симметричные правки во всех `k` известных точках (имплементациях интерфейса, callers, enum) | новый метод в интерфейсе → правки во всех реализациях                 |
-| `O(n)`           | масштабируется с размером файла/пакета                                                      | переименование символа (sweep), обход всех функций пакета             |
-| `O(n·m)`         | пересекаются два независимых перечисления                                                   | поддержка нового типа сообщения × все его каналы доставки             |
-| `O(2ⁿ)`          | новый bool/enum в публичной сигнатуре, мультиплицирующий пространство состояний             | флаг `legacy bool` через 6 пакетов; новая ветвь в каждой бизнес-логике |
+| Class            | When                                                                                       | Example                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `O(1)`           | a local change with no architectural fan-out                                               | a new private helper, a refactor inside a function                    |
+| `O(k)`           | symmetric edits across all `k` known sites (interface implementations, callers, enum)      | a new method on an interface → edits in every implementation          |
+| `O(n)`           | scales with the size of the file/package                                                    | renaming a symbol (sweep), walking every function of a package        |
+| `O(n·m)`         | two independent enumerations intersect                                                      | supporting a new message type × all of its delivery channels          |
+| `O(2ⁿ)`          | a new bool/enum in a public signature, multiplying the state space                          | a `legacy bool` flag through 6 packages; a new branch in each business rule |
 
-Порядок строгий: `O(1) < O(k) < O(n) < O(n·m) < O(2ⁿ)`. Aggregation
-по PR — это максимум среди классов всех затронутых мест.
+The order is strict: `O(1) < O(k) < O(n) < O(n·m) < O(2ⁿ)`. PR-level aggregation
+is the maximum across the classes of all touched sites.
 
-### Почему именно эти пять
+### Why these five
 
-В реальных Go-PR'ах эти пять паттернов покрывают подавляющее
-большинство архитектурных рисков. Более тонкая нотация (`O(n log n)`,
-`O(n²)` от ошибочного nested loop, `Θ` vs `O`) — теоретически чище, но
-без выигрыша на наблюдаемых эвристиках. v0.2 сознательно фиксирует
-крупнозернистую решётку и тюнингует её на dogfooding.
+In real-world Go PRs these five patterns cover the overwhelming majority of
+architectural risks. A finer notation (`O(n log n)`, `O(n²)` from a mistaken
+nested loop, `Θ` vs `O`) is theoretically cleaner but yields nothing on the
+observable heuristics. v0.2 deliberately fixes a coarse-grained lattice and tunes
+it on dogfooding.
 
-## Эвристики
+## Heuristics
 
-Каждый детектор работает в одной известной плоскости и не вмешивается в
-другие. Aggregation решает конфликты (максимум класса побеждает).
+Each detector works in one known plane and doesn't interfere with the others.
+Aggregation resolves conflicts (the maximum class wins).
 
-| Детектор                  | Класс если сработал                | Сигнал                                                                                                                              | Нужны типы |
-| ------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `implementor_scan`        | `O(k)`, где k = #implementors      | в PR изменён метод интерфейса И в той же PR'е изменены ≥ 50% его реализаций                                                          | да         |
-| `identifier_fanout`       | `O(refs)`, где refs = #call sites | для затронутого экспортированного символа: pre-PR `references(symbol) ≥ N` (N=8 по дефолту) и PR тронул ≥ 80% call-sites             | да         |
-| `switch_case_symmetry`    | `O(k)`, где k = #switch arms      | добавлен enum-case И отредактированы ≥ 50% `switch` по этому типу в пакете                                                          | да         |
-| `state_multiplier`        | `O(2ⁿ)`                            | в публичную сигнатуру добавлен `bool` или новое значение enum, и есть ≥ 2 call-sites вне модуля-источника                            | да         |
-| `shotgun`                 | `O(n)`, где n = #файлов           | один логический change тронул ≥ N файлов (N=5 по дефолту) без общего AST-parent                                                     | нет        |
+| Detector                  | Class if it fires                  | Signal                                                                                                                              | Needs types |
+| ------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `implementor_scan`        | `O(k)`, where k = #implementors    | a PR changes an interface method AND in the same PR ≥ 50% of its implementations are changed                                       | yes         |
+| `identifier_fanout`       | `O(refs)`, where refs = #call sites | for a touched exported symbol: pre-PR `references(symbol) ≥ N` (N=8 by default) and the PR touched ≥ 80% of call sites             | yes         |
+| `switch_case_symmetry`    | `O(k)`, where k = #switch arms     | an enum case is added AND ≥ 50% of the `switch`es over that type in the package are edited                                         | yes         |
+| `state_multiplier`        | `O(2ⁿ)`                            | a `bool` or a new enum value is added to a public signature, and there are ≥ 2 call sites outside the originating module           | yes         |
+| `shotgun`                 | `O(n)`, where n = #files           | a single logical change touched ≥ N files (N=5 by default) with no common AST parent                                              | no          |
 
-«Логический change» в `shotgun` — это PR-уровень сигнал: смотрим на
-diff целиком, не на каждый файл независимо. Эвристика конкретно ищет
-«одна и та же замена строки в N файлах» / «одинаковые подписи функций,
-добавленные в N мест» — паттерны shotgun surgery из Code Complete.
+A "logical change" in `shotgun` is a PR-level signal: we look at the diff as a
+whole, not at each file independently. The heuristic specifically looks for "the
+same line replacement in N files" / "identical function signatures added in N
+places" — the shotgun-surgery patterns from Code Complete.
 
-«Затронут метод интерфейса» в `implementor_scan` определяется по `*ast.FuncDecl`
-с receiver'ом, чьё имя совпадает с одним из методов какого-либо
-`*types.Interface` в graph'е.
+A "touched interface method" in `implementor_scan` is determined by an
+`*ast.FuncDecl` with a receiver whose name matches one of the methods of some
+`*types.Interface` in the graph.
 
-Все пороги (`8`, `80%`, `50%`, `5`, `2`) — стартовые предположения. На
-v0.2.x они захардкожены; в v0.8 калибруются вместе с весами микросостояний.
+All thresholds (`8`, `80%`, `50%`, `5`, `2`) are starting assumptions. In v0.2.x
+they are hardcoded; in v0.8 they are calibrated together with the microstate
+weights.
 
 ## Per-change vs aggregate
 
-В JSON-отчёте `check --json` каждый файл изменения получает свой блок
-со списком сработавших детекторов и итоговым per-change классом. PR-уровень
-поле `scaling_class` равно максимуму per-change классов.
+In the `check --json` report each changed file gets its own block with the list
+of detectors that fired and the resulting per-change class. The PR-level
+`scaling_class` field equals the maximum of the per-change classes.
 
 ```json
 {
@@ -103,9 +103,8 @@ v0.2.x они захардкожены; в v0.8 калибруются вмес�
 }
 ```
 
-Текстовый вывод показывает PR-уровень класс в строке вердикта, при
-провале — список причин, при наличии — каждый не-`O(1)` detector hit
-отдельной строкой:
+The text output shows the PR-level class in the verdict line; on failure — the
+list of reasons; and, when present, each non-`O(1)` detector hit on its own line:
 
 ```
 PASS  ΔS_total=1.2500  ΔS_density=0.0250  threshold=0.0500  scaling_class=O(1)  lines_changed=50  files=2
@@ -117,227 +116,219 @@ FAIL  ΔS_total=1.4200  ΔS_density=0.0234  threshold=0.0050  scaling_class=O(k)
   scaling: implementor_scan O(k) in internal/proto/codec.go (size=7) — 7 implementors touched
 ```
 
-Поля строки вердикта стабильны по порядку: `verdict`, `ΔS_total`,
-`ΔS_density`, `threshold`, `scaling_class`, `lines_changed`, `files`.
-Поля разделены двумя пробелами — `awk` по `"\t"` не сработает, но
-`grep -oE 'scaling_class=\S+'` и подобные регулярные выражения по
-имени поля стабильны.
+The verdict-line fields are stable in order: `verdict`, `ΔS_total`,
+`ΔS_density`, `threshold`, `scaling_class`, `lines_changed`, `files`. Fields are
+separated by two spaces — `awk` on `"\t"` won't work, but
+`grep -oE 'scaling_class=\S+'` and similar field-name regexes are stable.
 
-## Downgrade reward — пропорциональный
+## Downgrade reward — proportional
 
-Если PR **понижает** класс затронутого места (был `O(k)`, стал `O(1)`),
-это даёт **отрицательный вклад в `ΔS_total`** — рефакторинг
-вознаграждается прямо в гейте.
+If a PR **lowers** the class of a touched site (was `O(k)`, became `O(1)`), that
+gives a **negative contribution to `ΔS_total`** — refactoring is rewarded right
+in the gate.
 
-Формула:
+Formula:
 
 ```
 ΔS_scaling_bonus = - β · log2(size_before / size_after)
 ```
 
-- `size_before` — размер архитектуры в исходном классе (например,
-  количество имплементаций при `O(implementors)`, количество cases при
+- `size_before` — the size of the architecture in the original class (e.g. the
+  number of implementations for `O(implementors)`, the number of cases for
   `O(switch)`).
-- `size_after = 1` для downgrade до `O(1)`; иначе соответствующий размер.
-- `β` — глобальный коэффициент бонуса, дефолт `0.5`.
-- `log2` — потому что выигрыш от удаления 16 имплементаций должен быть
-  больше, чем от удаления 2, но не пропорционально (закон убывающей
-  отдачи).
+- `size_after = 1` for a downgrade to `O(1)`; otherwise the corresponding size.
+- `β` — the global bonus coefficient, default `0.5`.
+- `log2` — because the gain from removing 16 implementations should be larger
+  than from removing 2, but not proportionally (the law of diminishing returns).
 
-Примеры с дефолтным `β = 0.5`:
+Examples with the default `β = 0.5`:
 
-| Сценарий                                           | size_before | size_after | Бонус   |
-| -------------------------------------------------- | ----------- | ---------- | ------- |
-| Свернули switch с 4 case'ами в полиморфизм         | 4           | 1          | `-1.00` |
-| Удалили интерфейс с 8 реализациями                 | 8           | 1          | `-1.50` |
-| Понизили `O(n·m)` до `O(n)` (убрали одну ось)      | n·m         | n          | `-0.5 · log2(m)` |
-| Локальный рефакторинг внутри функции               | 1           | 1          | `0`     |
+| Scenario                                              | size_before | size_after | Bonus   |
+| ----------------------------------------------------- | ----------- | ---------- | ------- |
+| Collapsed a switch with 4 cases into polymorphism     | 4           | 1          | `-1.00` |
+| Removed an interface with 8 implementations           | 8           | 1          | `-1.50` |
+| Lowered `O(n·m)` to `O(n)` (removed one axis)         | n·m         | n          | `-0.5 · log2(m)` |
+| Local refactor inside a function                      | 1           | 1          | `0`     |
 
-Бонус **не суммируется** с положительными вкладами от других микросостояний
-автоматически — он добавляется в `ΔS_total` как отдельное слагаемое:
+The bonus is **not** automatically merged with the positive contributions of
+other microstates — it is added to `ΔS_total` as a separate term:
 
 ```
 ΔS_total = Σ_files (S_head - S_base) + Σ_scaling_bonuses
 ΔS_density = ΔS_total / max(1, lines_changed)
 ```
 
-В отчёте scaling-бонус показывается отдельной строкой, чтобы пользователь
-видел, **почему** общий `ΔS_total` отрицательный, даже если структурная
-часть положительная.
+In the report the scaling bonus is shown on a separate line, so the user can see
+**why** the overall `ΔS_total` is negative even when the structural part is
+positive.
 
-### Повышение класса в `ΔS` не штрафуется
+### Class upgrades are not penalized in `ΔS`
 
-Симметрично: PR, который вводит новую `O(implementors)`-зависимость,
-не получает **дополнительного** положительного вклада в `ΔS` сверх
-того, что уже описано микросостояниями (длина, цикломатика, файлы
-shotgun-паттерна и т.д.). Повышение класса проваливает PR через
-**отдельный гейт** (см. §«Гейт»), а не через `ΔS`.
+Symmetrically: a PR that introduces a new `O(implementors)` dependency gets no
+**extra** positive contribution to `ΔS` beyond what the microstates already
+describe (length, cyclomatic, shotgun-pattern files, etc.). A class upgrade fails
+the PR through a **separate gate** (see [Gate](#gate)), not through `ΔS`.
 
-Причина: иначе сигнал «новый код увеличивает сложность» учитывался бы
-**дважды** — через рост микросостояний и через scaling. Двойной счёт
-делает калибровку порога невозможной. Симметричное правило (только
-downgrade влияет на `ΔS`) даёт чистое разделение.
+The reason: otherwise the "new code increases complexity" signal would be counted
+**twice** — through the rise in microstates and through scaling. Double counting
+makes calibrating the threshold impossible. The symmetric rule (only a downgrade
+affects `ΔS`) gives a clean separation.
 
-## Гейт
+## Gate
 
-Гейт `check` становится двумерным:
+The `check` gate becomes two-dimensional:
 
 ```
 fail if ΔS_density > delta_s_max
 fail if scaling_class > scaling_class_max
 ```
 
-Дефолты в `.entrolint.yaml`:
+Defaults in `.entrolint.yaml`:
 
 ```yaml
 delta_s_max:        0.05
-scaling_class_max:  O(k)   # O(n) и выше валят PR
+scaling_class_max:  O(k)   # O(n) and above fail the PR
 scaling_bonus_beta: 0.5
 ```
 
-`scaling_class_max = O(k)` означает: `O(1)` и `O(k)` проходят, всё выше
-(включая `O(n)`, `O(n·m)`, `O(2ⁿ)`) — fail.
+`scaling_class_max = O(k)` means: `O(1)` and `O(k)` pass, everything above
+(including `O(n)`, `O(n·m)`, `O(2ⁿ)`) fails.
 
-Логика «или-или», не «и-и»: PR валится при превышении любого порога.
-Это соответствует тому, что метрики ловят разные классы рисков.
+The logic is "or", not "and": the PR fails when any threshold is exceeded. This
+matches the fact that the metrics catch different classes of risk.
 
-## Escape hatch — аннотация
+## Escape hatch — the annotation
 
-Иногда `O(implementors)` — оправданное архитектурное решение (например,
-SPI с известным набором драйверов). Чтобы такие случаи не отравляли
-сигнал, поддерживается аннотация в комментарии над затронутой
-функцией / типом / интерфейсом:
+Sometimes `O(implementors)` is a justified architectural decision (e.g. an SPI
+with a known set of drivers). So such cases don't poison the signal, an
+annotation is supported in a comment above the touched function / type /
+interface:
 
 ```go
-// entrolint:scaling=O(implementors) reason="каждый storage backend обязан реализовать всё API"
+// entrolint:scaling=O(implementors) reason="every storage backend must implement the full API"
 type Storage interface {
     // ...
 }
 ```
 
-Аннотация:
+The annotation:
 
-- **выводит метод/тип из под детектора** — он не повышает класс PR-уровня;
-- но **остаётся в JSON-отчёте** под полем `acknowledged_scaling` — паттерн
-  виден в любом dashboard, просто без последствий для гейта.
+- **takes the method/type out from under the detector** — it doesn't raise the
+  PR-level class;
+- but **stays in the JSON report** under an `acknowledged_scaling` field — the
+  pattern is visible on any dashboard, just without consequences for the gate.
 
-Парсер аннотаций — простой grep по комментариям над `*ast.FuncDecl`,
-`*ast.TypeSpec`, `*ast.InterfaceType`. Никакой формальной грамматики —
-формат сознательно держится крошечным.
+The annotation parser is a simple grep over comments above `*ast.FuncDecl`,
+`*ast.TypeSpec`, `*ast.InterfaceType`. No formal grammar — the format is
+deliberately kept tiny.
 
-## Известные упрощения v0.2
+## Known simplifications (v0.2)
 
-Чтобы не делать вид, что всё гладко:
+So as not to pretend everything is smooth:
 
-1. **Эвристики ловят паттерны, не намерения.** Иногда `O(k)`-эвристика
-   стрельнёт на правке, которая семантически локальна (генератор кода
-   обновил все файлы синхронно). Аннотация — единственный escape.
-2. **Размер архитектуры считается на base.** Если PR одновременно
-   увеличивает количество имплементаций и тронул половину старых —
-   `size_before` — это старое количество. Это занижает `O(k)` сложность.
-   Не критично для v0.2; учитываем при v0.8 калибровке.
-3. **`shotgun` без типов даёт ложноположительные на изменениях
-   форматирования.** Workaround: gofumpt-only diff'ы фильтруются перед
-   эвристикой через простую проверку «есть ли изменения вне whitespace».
-4. **Cross-package references — медленные.** `go/packages` загрузка с
-   полным type checking может занять секунды на больших репозиториях.
-   v0.2.0 принимает это; v0.3+ — параллельная загрузка пакетов и кэш
-   `references(symbol)` в `.entrolint.cache.json`.
-5. **Дефолтные пороги (50%, 80%, ...) — необоснованные.** В v0.8
-   обучаются на корпусе вместе с весами микросостояний; до этого —
-   стартовые предположения, фиксируем в этой документации.
-6. **`implementor_scan` видит только интерфейсы своего модуля.**
-   `packages.Load("./...")` отдаёт пакеты только корневого модуля;
-   stdlib и внешние зависимости доступны через `pkg.Imports`, но не
-   попадают в итерацию. PR, который трогает ≥50% проектных типов,
-   реализующих `io.Reader`/`http.Handler`/прочие популярные stdlib-
-   интерфейсы, **не сработает** — это сознательное v0.2 ограничение,
-   а не баг. Транзитивный обход и фильтр по `GOROOT` рассматриваем в
-   v0.3.
-7. **Generic-интерфейсы пропускаются.** `types.Implements` неопределён
-   на параметризованных типах; детектор молча скипает
-   `interface[T]{...}`. v0.3+ может инстансировать через
-   `pkg.TypesInfo.Instances`.
-8. **`switch_case_symmetry` не проверяет «case добавлен», а только
-   симметричный edit.** Полный spec эвристики — «добавлен enum-case
-   И отредактированы ≥ 50% switch'ей по этому типу». v0.2 MVP
-   реализует только вторую половину: «≥ 50% switch'ей по enum-типу
-   тронуты в PR». Диффинг base/head AST на const-декларациях ради
-   разделения «новый case» vs «переименование/рефакторинг case'а»
-   откладывается до v0.3 — пока обе ситуации считаются одинаково
-   архитектурно затратными и обе валятся в `O(k)`. Это даёт
-   ложноположительные на массовых рефакторингах внутри одного enum'а
-   без добавления case'ов; аннотация `entrolint:scaling` — escape.
-9. **`identifier_fanout` использует «def-файл в Changes» как прокси
-   для «PR изменил символ».** Полный spec эвристики — «PR
-   отредактировал definition И ≥ 80% call-sites». v0.2 MVP проверяет
-   только что *файл* с declaration входит в diff (без AST-diff'а на
-   конкретных полях declaration'а). Каноничный кейс «переименовал
-   функцию + обновил все её вызовы» пойман правильно; но «случайно
-   тронул format.go ради импорта и обновил 80% callers по своим
-   причинам» формально может выстрелить — нечастый сценарий, escape
-   через аннотацию.
-10. **`identifier_fanout` не различает self-references от
-    cross-package references.** Если экспортированная функция вызывает
-    себя рекурсивно или ссылается на свои же поля в том же файле,
-    эти uses попадают в числитель и знаменатель ratio. При тронутом
-    def-файле это слегка завышает ratio в сторону trigger'а. v0.3
-    может вычитать out-of-changed-files counter или вести отдельную
-    «cross-package fan-out» метрику.
-11. **`state_multiplier` ловит только параметры, добавленные
-    в конец сигнатуры.** Полный AST-diff на параметрах — задача
-    сложнее, чем requires v0.2: middle-insert (`f(a, NEW, b)`),
-    замена типа без изменения арности (`f(int)` → `f(bool)`), новый
-    параметр через variadic (`...Option`) — это всё v0.3 расширения.
-    MVP проверяет: head имеет ровно +1 параметр, и он `bool` или
-    `<enum-like type>`, при этом первые N параметров побитово равны
-    базе по `typeKey` (текстовое сравнение AST). Срабатывает на
-    каноничный кейс «добавили флаг легаси-поведения в публичный API»;
-    остальные случаи откладываются. Также детектор не различает
-    `bool` от `*bool` или `[]bool` — последние не считаются
-    state-multiplying (это семантически опция, а не флаг).
+1. **The heuristics catch patterns, not intent.** Sometimes the `O(k)` heuristic
+   fires on a change that is semantically local (a code generator updated all
+   files in sync). The annotation is the only escape.
+2. **The architecture size is computed on base.** If a PR simultaneously
+   increases the number of implementations and touches half of the old ones,
+   `size_before` is the old count. This understates the `O(k)` complexity. Not
+   critical for v0.2; accounted for in v0.8 calibration.
+3. **`shotgun` without types yields false positives on formatting changes.**
+   Workaround: gofumpt-only diffs are filtered out before the heuristic via a
+   simple "are there changes outside whitespace" check.
+4. **Cross-package references are slow.** A `go/packages` load with full type
+   checking can take seconds on large repositories. v0.2.0 accepts this; v0.3+ —
+   parallel package loading and a `references(symbol)` cache in
+   `.entrolint.cache.json`.
+5. **The default thresholds (50%, 80%, ...) are unjustified.** In v0.8 they are
+   trained on a corpus together with the microstate weights; until then — starting
+   assumptions, pinned in this documentation.
+6. **`implementor_scan` sees only the interfaces of its own module.**
+   `packages.Load("./...")` returns only the root module's packages; stdlib and
+   external dependencies are reachable via `pkg.Imports` but don't enter the
+   iteration. A PR that touches ≥50% of the project types implementing
+   `io.Reader`/`http.Handler`/other popular stdlib interfaces **won't fire** —
+   this is a deliberate v0.2 limitation, not a bug. Transitive traversal and a
+   `GOROOT` filter are under consideration for v0.3.
+7. **Generic interfaces are skipped.** `types.Implements` is undefined on
+   parameterized types; the detector silently skips `interface[T]{...}`. v0.3+ may
+   instantiate via `pkg.TypesInfo.Instances`.
+8. **`switch_case_symmetry` doesn't check that "a case was added", only the
+   symmetric edit.** The full heuristic spec is "an enum case is added AND ≥ 50%
+   of the switches over that type are edited". The v0.2 MVP implements only the
+   second half: "≥ 50% of the switches over an enum type are touched in the PR".
+   Diffing the base/head AST on const declarations in order to separate "a new
+   case" from "renaming/refactoring a case" is deferred to v0.3 — for now both
+   situations are treated as equally architecturally expensive and both fail at
+   `O(k)`. This yields false positives on bulk refactors within one enum without
+   adding cases; the `entrolint:scaling` annotation is the escape.
+9. **`identifier_fanout` uses "the def file is in Changes" as a proxy for "the PR
+   changed the symbol".** The full heuristic spec is "the PR edited the definition
+   AND ≥ 80% of call sites". The v0.2 MVP only checks that the *file* with the
+   declaration is in the diff (without an AST diff on the specific fields of the
+   declaration). The canonical case "renamed a function + updated all its calls"
+   is caught correctly; but "accidentally touched format.go for an import and
+   updated 80% of callers for your own reasons" could formally fire — an
+   infrequent scenario, escape via the annotation.
+10. **`identifier_fanout` doesn't distinguish self-references from cross-package
+    references.** If an exported function calls itself recursively or references
+    its own fields in the same file, those uses land in both the numerator and
+    denominator of the ratio. With the def file touched, this slightly inflates
+    the ratio toward triggering. v0.3 may subtract an out-of-changed-files counter
+    or maintain a separate "cross-package fan-out" metric.
+11. **`state_multiplier` catches only parameters added at the end of the
+    signature.** A full AST diff on parameters is harder than v0.2 requires:
+    a middle insert (`f(a, NEW, b)`), a type swap without an arity change
+    (`f(int)` → `f(bool)`), a new parameter via variadic (`...Option`) — these are
+    all v0.3 extensions. The MVP checks: head has exactly +1 parameter, and it is
+    `bool` or an `<enum-like type>`, while the first N parameters are bit-for-bit
+    equal to base by `typeKey` (a textual AST comparison). It fires on the
+    canonical case "added a legacy-behavior flag to a public API"; the rest are
+    deferred. The detector also doesn't distinguish `bool` from `*bool` or
+    `[]bool` — the latter are not considered state-multiplying (semantically an
+    option, not a flag).
 
-## Что меняется в v0.8 («Weight calibration»)
+## What changes in v0.8 ("Weight calibration")
 
-В v0.8 параметры scaling-эвристик перестают быть фиксированными
-константами и становятся частью обученной модели.
+In v0.8 the parameters of the scaling heuristics stop being fixed constants and
+become part of a trained model.
 
-- **Таргет регрессии** — будущие revert-коммиты в файлах, которые
-  получили `scaling_class ≥ O(k)` в проходящем PR. То есть гипотеза:
-  «PR с высоким scaling-классом чаще требует отката».
-- **Параметры эвристик** — пороги `references_min=8`, `implementor_ratio=0.5`
-  и т.д. — обучаются на публичном корпусе.
-- **`β` downgrade-бонуса** — также обучается; интерпретируемо
-  (одно число, линейный вклад).
-- **Per-detector confidence** — вводится как ML-предсказание
-  «насколько хит этого детектора предсказывает revert». Гейт начинает
-  смотреть только на high-confidence хиты.
+- **The regression target** is future revert commits in files that received
+  `scaling_class ≥ O(k)` in a passing PR. The hypothesis: "a PR with a high
+  scaling class more often requires a revert".
+- **The heuristic parameters** — thresholds `references_min=8`,
+  `implementor_ratio=0.5`, etc. — are trained on a public corpus.
+- **The downgrade bonus `β`** — also trained; interpretable (a single number, a
+  linear contribution).
+- **Per-detector confidence** — introduced as an ML prediction of "how well a hit
+  of this detector predicts a revert". The gate starts looking only at
+  high-confidence hits.
 
-Архитектурное следствие для кода v0.2: пороги и `β` грузятся из
-конфига как данные, не используются как магические числа в Go-коде.
-Тогда переход на ML-калибровку — просто замена источника параметров,
-не переписывание детекторов.
+The architectural consequence for the v0.2 code: thresholds and `β` are loaded
+from the config as data, not used as magic numbers in Go code. Then moving to
+ML calibration is just a change of the parameter source, not a rewrite of the
+detectors.
 
-## Что не входит в v0.2
+## What's out of scope for v0.2
 
-- **TypeScript** — второй язык приходит в v0.5; scaling-детекторы для
-  TS требуют tree-sitter cross-references, инфраструктуры пока нет.
-- **`O(n log n)`, `O(n²)` и т.п.** — более тонкая решётка. Не доказано,
-  что эвристики могут отличить их статически без false positives.
-- **Сравнение PR'ов между собой** («этот PR в топ-5% по scaling-классу
-  за квартал») — это уровень dashboard'а, лежит за пределами CLI.
-- **IDE-интеграция** — показ класса прямо в редакторе. Откладывается
-  до v0.7+ (HTML heatmap), потом IDE plugin.
+- **TypeScript** — the second language arrives in v0.5; scaling detectors for TS
+  require tree-sitter cross-references, and the infrastructure isn't there yet.
+- **`O(n log n)`, `O(n²)`, etc.** — a finer lattice. It's not proven that the
+  heuristics can distinguish them statically without false positives.
+- **Comparing PRs against each other** ("this PR is in the top 5% by scaling
+  class this quarter") — that's dashboard level, beyond the CLI.
+- **IDE integration** — showing the class right in the editor. Deferred to v0.7+
+  (the HTML heatmap), then an IDE plugin.
 
-## Терминология
+## Terminology
 
-- **Scaling class** — O-класс будущей цены повторного похожего изменения.
-- **Detector** — статическая эвристика, возвращающая `(class, size, evidence)`
-  для одного затронутого места.
-- **Detector hit** — срабатывание детектора на конкретном месте.
-- **Size** — размер архитектуры, на которую завязан класс (k для
-  implementors/cases, n для shotgun).
-- **Downgrade reward** — отрицательный вклад в `ΔS_total`, начисляемый
-  PR'у, который понижает scaling class затронутого места.
-- **Acknowledged hit** — detector hit, помеченный аннотацией
-  `// entrolint:scaling=…` — не влияет на гейт, виден в отчёте.
+- **Scaling class** — the O-class of the future cost of a repeated similar change.
+- **Detector** — a static heuristic that returns `(class, size, evidence)` for a
+  single touched site.
+- **Detector hit** — a detector firing at a specific site.
+- **Size** — the size of the architecture the class is tied to (k for
+  implementors/cases, n for shotgun).
+- **Downgrade reward** — a negative contribution to `ΔS_total`, awarded to a PR
+  that lowers the scaling class of a touched site.
+- **Acknowledged hit** — a detector hit marked with an `// entrolint:scaling=…`
+  annotation — doesn't affect the gate, visible in the report.

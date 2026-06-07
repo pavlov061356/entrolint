@@ -217,7 +217,7 @@ func scoreBlob(e *thermo.Engine, blob []byte, path string) (float64, bool) {
 }
 
 // applyScalingBonus folds the (always-negative) downgrade reward into
-// ΔS_total per docs/scaling.md §"Downgrade reward". Density re-derives
+// ΔS_total per docs/scaling.md#downgrade-reward--proportional. Density re-derives
 // from the new total against d.LinesChanged — the same denominator
 // ComputeDelta already used, so the two stay coherent.
 func applyScalingBonus(d thermo.Delta, bonus float64) thermo.Delta {
