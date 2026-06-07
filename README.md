@@ -92,6 +92,50 @@ delta_s_max:       0.05   # ΔS_density threshold for check
 churn_since_days:  90     # window for the churn factor (lives in T, not S)
 ```
 
+## Using entrolint in CI
+
+entrolint ships a composite GitHub Action that posts a sticky PR comment with
+ΔS, the scaling class and the hottest changed files, and (optionally) uploads a
+SARIF log to GitHub Code Scanning. No Go toolchain is needed on the runner — the
+Action downloads the released binary.
+
+```yaml
+# .github/workflows/entrolint.yml
+name: entrolint
+on:
+  pull_request:
+permissions:
+  contents: read
+  pull-requests: write     # post the PR comment
+  security-events: write   # upload SARIF (optional)
+jobs:
+  entrolint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - run: git fetch --no-tags origin "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+      - uses: pavlov061356/entrolint@v0
+        with:
+          comment: true
+          upload-sarif: true
+          fail-on-gate: false   # set true to block PRs that raise entropy
+```
+
+| Input          | Default        | Description                                                        |
+| -------------- | -------------- | ------------------------------------------------------------------ |
+| `version`      | `latest`       | `latest`, a tag (`v0.4.0`), or `source` (build from the checkout). |
+| `base`         | PR base branch | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
+| `head`         | `HEAD`         | Head ref.                                                          |
+| `config`       | repo root      | Path to a `.entrolint.yaml`.                                       |
+| `comment`      | `true`         | Post / update the sticky PR comment.                               |
+| `upload-sarif` | `false`        | Upload the `scan` SARIF to Code Scanning.                          |
+| `fail-on-gate` | `false`        | Fail the job when the ΔS / scaling gate trips.                     |
+
+> Fork PRs get a read-only `GITHUB_TOKEN`, so the comment step is skipped on PRs
+> from forks (the Action stays on `pull_request`, not `pull_request_target`).
+
 ## The entropy model
 
 Entropy is a weighted sum of "microstates" — individual measurable factors of

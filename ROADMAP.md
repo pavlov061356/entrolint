@@ -70,20 +70,21 @@ Released 2026-06-07. Tag `v0.3.0` on master.
 - Coefficient weights are revisited as new signals appear — a breaking change to
   the `S` score is possible (noted in the CHANGELOG).
 
-## v0.4 — Internal CI integration
+## v0.4 — CI integration ✅
 
-**Goal:** turn the tool into a product inside the work loop, without depending on
-the repository being public.
+**Goal:** turn the tool into a product inside the work loop.
 
-- An `entrolint-check` GitHub Action as a workflow inside the repo — drop-in,
-  configured by a single file.
-- A bot that leaves a PR comment: ΔS, scaling class, top-3 hotspots in the
-  changed files.
-- SARIF output for GitHub Code Scanning. If GHAS isn't enabled — SARIF is written
-  as a CI artifact and read by humans.
-- An internal badge: a static SVG generated in CI and stored as an artifact or in
-  a private `gh-pages` branch — for internal dashboards.
-- A public shields.io badge — only once the repo goes public.
+- ✅ An `entrolint-check` composite GitHub Action — drop-in (`uses: pavlov061356/entrolint@v0`),
+  configured by a single file. Downloads the released binary; no Go on the runner.
+- ✅ A PR-comment bot: ΔS, scaling class, and the top-3 hotspots among the changed
+  files, posted as a sticky comment (`check --format markdown`).
+- ✅ SARIF output for GitHub Code Scanning (`scan --format sarif`); uploaded via the
+  Action's `upload-sarif` input. If Code Scanning isn't enabled the SARIF can be
+  kept as a CI artifact and read by humans.
+- ✅ Dogfooding: entrolint runs on its own PRs (advisory — comments + SARIF, does
+  not block), closing the v0.1-deferred CI-integration item.
+- ⏭ An entropy badge (static SVG / shields endpoint) — deferred; low value for the
+  infra cost.
 
 ## v0.5 — A second language (TypeScript)
 
