@@ -1,19 +1,15 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"path/filepath"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
 	"github.com/pavlov061356/entrolint/internal/engine/pipeline"
 	"github.com/pavlov061356/entrolint/internal/report"
-	"github.com/pavlov061356/entrolint/internal/scaling"
 	"github.com/spf13/cobra"
 )
 
@@ -86,19 +82,12 @@ func runCheck(cmd *cobra.Command, root string) error {
 
 	verdict := res.Verdict(cfg)
 
-	switch format {
-	case "json":
-		if err := writeCheckJSON(out, res, cfg, verdict); err != nil {
-			return err
-		}
-	case "markdown":
-		if _, err := io.WriteString(out, report.CheckMarkdown(res, cfg, verdict)); err != nil {
-			return err
-		}
-	default:
-		if err := writeCheckTable(out, res, cfg, verdict); err != nil {
-			return err
-		}
+	payload, err := renderCheck(format, res, cfg, verdict)
+	if err != nil {
+		return err
+	}
+	if _, err := out.Write(payload); err != nil {
+		return err
 	}
 
 	if verdict.Failed {
@@ -107,94 +96,17 @@ func runCheck(cmd *cobra.Command, root string) error {
 	return nil
 }
 
-// checkJSONReport is the JSON envelope `entrolint check --json` emits.
-// Verdict + thresholds live here (not on pipeline.CheckResult) so the
-// engine layer stays gate-policy-free — thresholds are a CLI/config
-// concern. Downstream tooling can read Verdict + Reasons without
-// recomputing them.
-type checkJSONReport struct {
-	Verdict         string               `json:"verdict"`
-	Reasons         []string             `json:"reasons,omitempty"`
-	Threshold       float64              `json:"threshold"`
-	ScalingClassMax scaling.Class        `json:"scaling_class_max"`
-	Result          pipeline.CheckResult `json:"result"`
-}
-
-func writeCheckJSON(out io.Writer, res pipeline.CheckResult, cfg config.Config, v pipeline.Verdict) error {
-	verdict := "pass"
-	if v.Failed {
-		verdict = "fail"
+// renderCheck formats the check result for the chosen output format.
+// All rendering lives in internal/report; this is just the dispatch.
+func renderCheck(format string, res pipeline.CheckResult, cfg config.Config, v pipeline.Verdict) ([]byte, error) {
+	switch format {
+	case "json":
+		return report.CheckJSON(res, cfg, v)
+	case "markdown":
+		return []byte(report.CheckMarkdown(res, cfg, v)), nil
+	default:
+		return []byte(report.CheckTable(res, cfg, v)), nil
 	}
-	enc := json.NewEncoder(out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(checkJSONReport{
-		Verdict:         verdict,
-		Reasons:         v.Reasons,
-		Threshold:       cfg.DeltaSMax,
-		ScalingClassMax: cfg.ScalingClassMax,
-		Result:          res,
-	})
-}
-
-func writeCheckTable(out io.Writer, res pipeline.CheckResult, cfg config.Config, v pipeline.Verdict) error {
-	label := "PASS"
-	if v.Failed {
-		label = "FAIL"
-	}
-	if _, err := fmt.Fprintf(out,
-		"%s  ΔS_total=%.4f  ΔS_density=%.4f  threshold=%.4f  scaling_class=%s  lines_changed=%d  files=%d\n",
-		label, res.Delta.Total, res.Delta.Density, cfg.DeltaSMax,
-		res.Scaling.Class, res.Delta.LinesChanged, len(res.Delta.Files),
-	); err != nil {
-		return err
-	}
-	for _, reason := range v.Reasons {
-		if _, err := fmt.Fprintf(out, "  reason: %s\n", reason); err != nil {
-			return err
-		}
-	}
-	if err := writeScalingHits(out, res.Scaling); err != nil {
-		return err
-	}
-	if len(res.Delta.Files) == 0 {
-		return nil
-	}
-	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "KIND\tPATH\tS_BASE\tS_HEAD\tΔ"); err != nil {
-		return err
-	}
-	for _, f := range res.Delta.Files {
-		if _, err := fmt.Fprintf(tw, "%s\t%s\t%.3f\t%.3f\t%+.3f\n",
-			f.Kind, f.Path, f.SBase, f.SHead, f.Delta,
-		); err != nil {
-			return err
-		}
-	}
-	return tw.Flush()
-}
-
-// writeScalingHits prints one line per non-O(1) detector hit, so the
-// reader sees *why* the class is elevated. Skipped for empty results
-// (the skeleton-phase case in v0.2.0).
-func writeScalingHits(out io.Writer, r scaling.Result) error {
-	for _, f := range r.Files {
-		for _, h := range f.Hits {
-			if h.Class == scaling.ClassO1 {
-				continue
-			}
-			line := fmt.Sprintf("  scaling: %s %s in %s", h.Detector, h.Class, h.Path)
-			if h.Size > 0 {
-				line += fmt.Sprintf(" (size=%d)", h.Size)
-			}
-			if h.Evidence != "" {
-				line += " — " + h.Evidence
-			}
-			if _, err := fmt.Fprintln(out, line); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func init() {
