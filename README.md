@@ -4,6 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/pavlov061356/entrolint.svg)](https://pkg.go.dev/github.com/pavlov061356/entrolint)
 [![Go version](https://img.shields.io/github/go-mod/go-version/pavlov061356/entrolint)](go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-entrolint--check-2ea44f?logo=githubactions&logoColor=white)](https://github.com/marketplace/actions/entrolint-check)
 
 > Code rots toward disorder. `entrolint` measures the entropy — and keeps it from growing on every PR.
 
@@ -98,6 +99,8 @@ entrolint ships a composite GitHub Action that posts a sticky PR comment with
 ΔS, the scaling class and the hottest changed files, and (optionally) uploads a
 SARIF log to GitHub Code Scanning. No Go toolchain is needed on the runner — the
 Action downloads the released binary.
+
+📦 Available on the [GitHub Marketplace](https://github.com/marketplace/actions/entrolint-check).
 
 ```yaml
 # .github/workflows/entrolint.yml
