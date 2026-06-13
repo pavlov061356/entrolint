@@ -130,7 +130,7 @@ runs:
 
     - name: Upsert PR comment
       if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       env:
         REPORT_MD: ${{ steps.check.outputs.report-md }}
       with:
@@ -170,7 +170,7 @@ runs:
 
     - name: Upload SARIF
       if: ${{ inputs.upload-sarif == 'true' }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: ${{ steps.sarif.outputs.sarif }}
         category: entrolint
