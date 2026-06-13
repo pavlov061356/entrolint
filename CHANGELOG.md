@@ -8,6 +8,20 @@ versions.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-06-13
+
+### Changed
+
+- Documentation only. Reconciled the docs and code comments with the
+  shipped v0.5.0 state (the v0.5.0 release had carried several stale
+  docs): README's microstate table and `.entrolint.yaml` weights example
+  now include `cross_duplication`, and a Contributing section links the
+  community-health files; the ROADMAP marks v0.5 released and refreshes
+  the coverage bar; `docs/formula.md` and `docs/scaling.md` cover v0.5,
+  mark the (still-deferred) downgrade reward and scaling annotation as
+  not-yet-shipped, and de-pin staged coupling from specific versions.
+  No code or behaviour change.
+
 ## [0.5.0] — 2026-06-13
 
 ### Added
@@ -282,7 +296,8 @@ left in place rather than re-pointed.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/pavlov061356/entrolint/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pavlov061356/entrolint/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/pavlov061356/entrolint/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/pavlov061356/entrolint/compare/v0.4.1...v0.4.2
