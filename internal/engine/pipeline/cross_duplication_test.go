@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pavlov061356/entrolint/internal/engine/config"
+	"github.com/pavlov061356/entrolint/internal/engine/thermo"
 )
 
 // Three clone "bodies" of increasing block size. Each is reused verbatim
@@ -156,6 +157,79 @@ func TestCheck_CrossFileCloneRaisesHeadEntropy(t *testing.T) {
 	if sHeadWith <= sHeadNo {
 		t.Errorf("a head cross-file clone must raise SHead: with partner %v, without %v",
 			sHeadWith, sHeadNo)
+	}
+}
+
+// TestCheck_AsymmetricParseOfPartnerDoesNotPerturbSibling is the issue #68
+// regression: a clone class's lowest-path partner is unparseable at base
+// only, and the assertion is that an UNCHANGED sibling clone's ΔS is not
+// perturbed by the partner's parse-flip.
+//
+//   - a_partner.go is Modified: a valid body3 clone at head, a syntax error
+//     at base. It exists on both refs, so it is NOT a legitimate one-sided
+//     add/remove — only its parseability differs.
+//   - m_sibling.go is Modified with a byte-identical body3 clone on both
+//     refs, so every microstate including cross_duplication MUST score it
+//     identically and SBase must equal SHead.
+//
+// Without the symmetric-exclusion fix, a_partner.go is in the head corpus
+// but not the base corpus: at head m_sibling.go pays the class size (the
+// lower-path a_partner.go is the free original), at base it pays nothing
+// (no partner) — a spurious positive ΔS. Holding a_partner.go out of both
+// corpora restores SBase == SHead.
+func TestCheck_AsymmetricParseOfPartnerDoesNotPerturbSibling(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, crossCalibCorpus())
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	clone := body3("Sibling")                   // identical on both refs
+	brokenBase := "package p\nfunc Broken( {\n" // unparseable
+	validHead := body3("Partner")
+
+	fr := &fakeRunner{
+		t:        t,
+		resolved: map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff: []byte(
+			rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "a_partner.go", "") +
+				rawRecord("100644", "100644", "cccccccccccccccccccccccccccccccccccccccc", "cccccccccccccccccccccccccccccccccccccccc", "M", "m_sibling.go", ""),
+		),
+		numstatOut: []byte(
+			numRecord(3, 3, "a_partner.go", "") +
+				numRecord(0, 0, "m_sibling.go", ""),
+		),
+		blobs: map[string][]byte{
+			baseSHA + ":a_partner.go": []byte(brokenBase),
+			headSHA + ":a_partner.go": []byte(validHead),
+			baseSHA + ":m_sibling.go": []byte(clone),
+			headSHA + ":m_sibling.go": []byte(clone),
+		},
+		tree: map[string][]string{
+			baseSHA: {"a_partner.go", "m_sibling.go"},
+			headSHA: {"a_partner.go", "m_sibling.go"},
+		},
+	}
+
+	res, err := runCheck(t, dir, fr)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+
+	// a_partner.go fails to parse at base, so it is dropped from ΔS; only
+	// the unchanged sibling is scored.
+	var sib *thermo.FileDelta
+	for i := range res.Delta.Files {
+		if res.Delta.Files[i].Path == "m_sibling.go" {
+			sib = &res.Delta.Files[i]
+		}
+	}
+	if sib == nil {
+		t.Fatalf("m_sibling.go missing from ΔS; files = %+v", res.Delta.Files)
+	}
+	if sib.SBase != sib.SHead {
+		t.Errorf("unchanged sibling perturbed by partner's one-sided parse failure: SBase=%v SHead=%v (issue #68)",
+			sib.SBase, sib.SHead)
 	}
 }
 

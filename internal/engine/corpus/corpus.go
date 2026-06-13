@@ -44,13 +44,26 @@ func BuildFromFiles(files []microstate.File) *Context {
 // Returns ErrUnavailable / ErrInvalidRef wrapped (from gitx) when git
 // cannot run or ref does not resolve.
 func Build(r gitx.Runner, ref string) (*Context, error) {
+	return BuildExcluding(r, ref, nil)
+}
+
+// BuildExcluding is Build with a set of paths held out of the corpus.
+// `check` uses it to keep cross-file clone membership SYMMETRIC across the
+// base and head refs: a diff file that exists on both sides but parses on
+// only one would otherwise be present in one ref's corpus and absent from
+// the other, shifting a clone class's lowest-path "original" between refs
+// and perturbing an innocent sibling's ΔS (issue #68). Holding such a file
+// out of BOTH refs neutralizes that — the same symmetric soft-miss stance
+// scoreBlob and buildCorpora already take. exclude is keyed by this ref's
+// path (the base ref uses a rename's OldPath) and may be nil.
+func BuildExcluding(r gitx.Runner, ref string, exclude map[string]bool) (*Context, error) {
 	paths, err := gitx.TreeFiles(r, ref)
 	if err != nil {
 		return nil, err
 	}
 	wanted := make([]string, 0, len(paths))
 	for _, p := range paths {
-		if golang.IsAnalyzablePath(p) {
+		if golang.IsAnalyzablePath(p) && !exclude[p] {
 			wanted = append(wanted, p)
 		}
 	}
