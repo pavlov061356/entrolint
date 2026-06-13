@@ -34,6 +34,10 @@ type fakeRunner struct {
 	// (e.g. gitx.ErrUnavailable firing mid-loop) without ad-hoc
 	// fakeRunner wrappers.
 	catFileErr map[string]error
+	// lsTreeCount counts `git ls-tree` invocations — the corpus pre-pass's
+	// whole-tree enumeration — so a test can assert it is skipped when
+	// cross_duplication is disabled.
+	lsTreeCount int
 }
 
 func (f *fakeRunner) Run(args ...string) ([]byte, error) {
@@ -78,6 +82,7 @@ func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 		// Drives corpus.Build's whole-tree enumeration. The fake only
 		// implements Run, so BlobsAtRef falls back to per-file cat-file
 		// blob lookups against f.blobs — no batch stdin needed.
+		f.lsTreeCount++
 		ref := args[len(args)-1]
 		var b strings.Builder
 		for _, p := range f.tree[ref] {

@@ -7,6 +7,8 @@
 package corpus
 
 import (
+	"sort"
+
 	"github.com/pavlov061356/entrolint/internal/engine/analyzer/golang"
 	"github.com/pavlov061356/entrolint/internal/engine/gitx"
 	"github.com/pavlov061356/entrolint/internal/engine/microstate"
@@ -34,52 +36,83 @@ func BuildFromFiles(files []microstate.File) *Context {
 	return &Context{crossDupMass: microstate.CrossDupMassByFile(files)}
 }
 
+// BuildFromBlobs builds a Context from an in-memory whole-tree blob map
+// keyed by repo-relative path. Each blob is parsed exactly once; a blob
+// that is empty or doesn't parse is skipped, matching the analyzer's
+// silent-skip. Paths in exclude are held out (check uses this to keep
+// clone-class membership symmetric across refs — see issue #68 and
+// microstate.CrossDupMassByFile). No git access: this is the seam that
+// lets `check` feed the corpus the same bytes it already fetched, and that
+// the staged v0.6 coupling pre-pass will reuse over the same blob set.
+func BuildFromBlobs(blobs map[string][]byte, exclude map[string]bool) *Context {
+	paths := make([]string, 0, len(blobs))
+	for p := range blobs {
+		if !exclude[p] {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths) // deterministic parse order (the mass is order-independent regardless)
+	files := make([]microstate.File, 0, len(paths))
+	for _, p := range paths {
+		if f, ok := golang.ParseGoBytes(p, blobs[p]); ok {
+			files = append(files, f)
+		}
+	}
+	return BuildFromFiles(files)
+}
+
 // Build reconstructs the whole tree at ref from git blobs and builds a
-// Context from it. Paths are enumerated with the same IsAnalyzablePath
-// filter the calibration walk uses (vendor/dot-dir excluded), fetched in
-// one batch, and parsed; a blob that is absent or doesn't parse is
-// skipped, matching the analyzer's silent-skip. The ref is never checked
-// out, so this works for a base ref that is not in the working tree.
+// Context. Paths are enumerated with the same IsAnalyzablePath filter the
+// calibration walk uses (vendor/dot-dir excluded), fetched in one batch,
+// and parsed. The ref is never checked out, so this works for a base ref
+// that is not in the working tree.
 //
 // Returns ErrUnavailable / ErrInvalidRef wrapped (from gitx) when git
 // cannot run or ref does not resolve.
 func Build(r gitx.Runner, ref string) (*Context, error) {
-	return BuildExcluding(r, ref, nil)
+	return BuildReusing(r, ref, nil, nil)
 }
 
-// BuildExcluding is Build with a set of paths held out of the corpus.
-// `check` uses it to keep cross-file clone membership SYMMETRIC across the
-// base and head refs: a diff file that exists on both sides but parses on
-// only one would otherwise be present in one ref's corpus and absent from
-// the other, shifting a clone class's lowest-path "original" between refs
-// and perturbing an innocent sibling's ΔS (issue #68). Holding such a file
-// out of BOTH refs neutralizes that — the same symmetric soft-miss stance
-// scoreBlob and buildCorpora already take. exclude is keyed by this ref's
-// path (the base ref uses a rename's OldPath) and may be nil.
-func BuildExcluding(r gitx.Runner, ref string, exclude map[string]bool) (*Context, error) {
+// BuildReusing is Build with two extras for `check`:
+//
+//   - have supplies blobs already fetched at this ref, keyed by their
+//     ref-tree path (the changed files the scoring path pulled). They are
+//     reused here instead of re-fetched, so each blob in the tree is read
+//     from git exactly once across the whole check run — the scoring path
+//     fetches the changed files, this fetches only the rest.
+//   - exclude holds parse-asymmetric files out of the corpus (issue #68).
+//
+// Both may be nil. Returns ErrUnavailable / ErrInvalidRef wrapped (from
+// gitx) when git cannot run or ref does not resolve.
+func BuildReusing(r gitx.Runner, ref string, have map[string][]byte, exclude map[string]bool) (*Context, error) {
 	paths, err := gitx.TreeFiles(r, ref)
 	if err != nil {
 		return nil, err
 	}
-	wanted := make([]string, 0, len(paths))
+	missing := make([]string, 0, len(paths))
 	for _, p := range paths {
-		if golang.IsAnalyzablePath(p) && !exclude[p] {
-			wanted = append(wanted, p)
+		if !golang.IsAnalyzablePath(p) || exclude[p] {
+			continue // excluded or already in hand — no fetch
+		}
+		if _, reused := have[p]; !reused {
+			missing = append(missing, p)
 		}
 	}
-	blobs, err := gitx.BlobsAtRef(r, ref, wanted)
+	fetched, err := gitx.BlobsAtRef(r, ref, missing)
 	if err != nil {
 		return nil, err
 	}
-	files := make([]microstate.File, 0, len(blobs))
-	for _, p := range wanted { // deterministic order
-		blob, ok := blobs[p]
-		if !ok {
-			continue
-		}
-		if f, ok := golang.ParseGoBytes(p, blob); ok {
-			files = append(files, f)
+	// Merge reused + freshly fetched into one whole-tree blob map. have is
+	// keyed by ref-tree path by construction (check re-keys a rename's base
+	// side), so its keys line up with the tree enumeration above.
+	blobs := make(map[string][]byte, len(missing)+len(have))
+	for _, p := range missing {
+		if b, ok := fetched[p]; ok {
+			blobs[p] = b
 		}
 	}
-	return BuildFromFiles(files), nil
+	for p, b := range have {
+		blobs[p] = b
+	}
+	return BuildFromBlobs(blobs, exclude), nil
 }

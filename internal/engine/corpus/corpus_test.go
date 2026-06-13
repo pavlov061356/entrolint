@@ -94,11 +94,11 @@ func TestBuild_ReconstructsTreeAndExcludesVendor(t *testing.T) {
 	}
 }
 
-// TestBuildExcluding_HoldsPathOutOfCorpus verifies the held-out path is
+// TestBuildReusing_ExcludeHoldsPathOut verifies the held-out path is
 // neither fetched nor indexed, so the clone class it would have formed
 // disappears and its partner carries no cross-file mass. This is the seam
 // `check` uses to keep clone membership symmetric across refs (issue #68).
-func TestBuildExcluding_HoldsPathOutOfCorpus(t *testing.T) {
+func TestBuildReusing_ExcludeHoldsPathOut(t *testing.T) {
 	repo := &fakeRepo{
 		tree: []string{"a.go", "b.go"},
 		blobs: map[string]string{
@@ -106,9 +106,9 @@ func TestBuildExcluding_HoldsPathOutOfCorpus(t *testing.T) {
 			"b.go": cloneBody("B"),
 		},
 	}
-	ctx, err := BuildExcluding(repo, "HEAD", map[string]bool{"a.go": true})
+	ctx, err := BuildReusing(repo, "HEAD", nil, map[string]bool{"a.go": true})
 	if err != nil {
-		t.Fatalf("BuildExcluding: %v", err)
+		t.Fatalf("BuildReusing: %v", err)
 	}
 	if repo.fetched["a.go"] {
 		t.Error("excluded path must not be fetched")
@@ -118,6 +118,37 @@ func TestBuildExcluding_HoldsPathOutOfCorpus(t *testing.T) {
 	}
 	if m := ctx.CrossDupMass("a.go"); m != 0 {
 		t.Errorf("excluded path carries no mass, got %v", m)
+	}
+}
+
+// TestBuildReusing_ReusesProvidedBlobs verifies a blob supplied in `have`
+// is taken as-is and NOT re-fetched, while the rest of the tree still is —
+// the seam `check` uses so each blob is read from git exactly once.
+func TestBuildReusing_ReusesProvidedBlobs(t *testing.T) {
+	repo := &fakeRepo{
+		tree: []string{"a.go", "b.go"},
+		blobs: map[string]string{
+			// a.go is NOT in repo.blobs: if BuildReusing tried to fetch it,
+			// the fake would error it absent and it would drop from the corpus.
+			"b.go": cloneBody("B"),
+		},
+	}
+	have := map[string][]byte{"a.go": []byte(cloneBody("A"))}
+
+	ctx, err := BuildReusing(repo, "HEAD", have, nil)
+	if err != nil {
+		t.Fatalf("BuildReusing: %v", err)
+	}
+	if repo.fetched["a.go"] {
+		t.Error("a blob supplied in `have` must be reused, not re-fetched")
+	}
+	if !repo.fetched["b.go"] {
+		t.Error("a tree blob absent from `have` must still be fetched")
+	}
+	// a.go (reused) and b.go (fetched) form a clone class: the lower path
+	// a.go is the free original, b.go carries the class size.
+	if m := ctx.CrossDupMass("b.go"); m <= 0 {
+		t.Errorf("reused + fetched blobs must form a clone class, got b.go mass %v", m)
 	}
 }
 

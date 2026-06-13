@@ -158,6 +158,27 @@ func TestCloneIndex_RequiresTwoOccurrences(t *testing.T) {
 	}
 }
 
+// TestCloneIndex_CollectsEveryOccurrence locks the two-pass index: the
+// counting pass keeps only recurring digests, and the collection pass must
+// then gather ALL their occurrences — one per file here — not just the two
+// that proved the class recurred.
+func TestCloneIndex_CollectsEveryOccurrence(t *testing.T) {
+	files := []File{
+		parseF(t, "a.go", cloneBody("A")),
+		parseF(t, "b.go", cloneBody("B")),
+		parseF(t, "c.go", cloneBody("C")),
+	}
+	idx := CloneIndex(files)
+	if len(idx) == 0 {
+		t.Fatal("three identical bodies must form at least one clone class")
+	}
+	for h, cc := range idx {
+		if len(cc.Occ) != 3 {
+			t.Errorf("class %x: got %d occurrences, want 3 (one per file)", h, len(cc.Occ))
+		}
+	}
+}
+
 func TestCrossDupMassByFile_OrderIndependent(t *testing.T) {
 	// File z holds the inner block both standalone AND nested inside an
 	// outer block; the outer block and the inner block are each cross-file
