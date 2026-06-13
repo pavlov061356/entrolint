@@ -130,7 +130,7 @@ runs:
 
     - name: Upsert PR comment
       if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       env:
         REPORT_MD: ${{ steps.check.outputs.report-md }}
       with:
