@@ -123,6 +123,12 @@ separated by two spaces — `awk` on `"\t"` won't work, but
 
 ## Downgrade reward — proportional
 
+> **Status (not yet shipped).** The wire field (`downgrade_bonus`) and the gate
+> handling exist, but the producer that computes a non-zero bonus is deferred to
+> v0.7 (see [ROADMAP](../ROADMAP.md#v07--the-physics-layer)). Until then
+> `downgrade_bonus` is always `0`; the rest of this section describes the
+> intended behaviour.
+
 If a PR **lowers** the class of a touched site (was `O(k)`, became `O(1)`), that
 gives a **negative contribution to `ΔS_total`** — refactoring is rewarded right
 in the gate.
@@ -198,6 +204,11 @@ The logic is "or", not "and": the PR fails when any threshold is exceeded. This
 matches the fact that the metrics catch different classes of risk.
 
 ## Escape hatch — the annotation
+
+> **Status (not yet shipped).** The report carries the wire field
+> (`acknowledged_scaling`), but the `// entrolint:scaling=…` parser is deferred to
+> v0.7 (see [ROADMAP](../ROADMAP.md#v07--the-physics-layer)). The annotation
+> described below is the intended design, not yet active.
 
 Sometimes `O(implementors)` is a justified architectural decision (e.g. an SPI
 with a known set of drivers). So such cases don't poison the signal, an
@@ -311,14 +322,15 @@ detectors.
 
 ## What's out of scope for v0.2
 
-- **TypeScript** — the second language arrives in v0.5; scaling detectors for TS
-  require tree-sitter cross-references, and the infrastructure isn't there yet.
+- **TypeScript** — the second language is deferred to post-1.0; scaling detectors
+  for TS would require tree-sitter cross-references, and the pre-1.0 line deepens
+  the Go engine instead.
 - **`O(n log n)`, `O(n²)`, etc.** — a finer lattice. It's not proven that the
   heuristics can distinguish them statically without false positives.
 - **Comparing PRs against each other** ("this PR is in the top 5% by scaling
   class this quarter") — that's dashboard level, beyond the CLI.
-- **IDE integration** — showing the class right in the editor. Deferred to v0.7+
-  (the HTML heatmap), then an IDE plugin.
+- **IDE integration** — showing the class right in the editor. Deferred to after
+  the v0.6 HTML heatmap, then an IDE plugin (post-1.0).
 
 ## Terminology
 

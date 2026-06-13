@@ -59,18 +59,21 @@ Released 2026-06-07. Tag `v0.3.0` on master.
 
 - ✅ `coupling`: per-file import count as an efferent-coupling proxy (v0.3 MVP,
   the `coupling` microstate, default weight 0.6). The full Ca/Ce/instability
-  graph needs a whole-tree pre-pass on both refs in `check` — deferred to v0.4+,
-  once such pre-pass infrastructure is needed for another detector.
+  graph needs a whole-tree pre-pass on both refs in `check`; the v0.5 corpus
+  pre-pass now provides that infrastructure, and the graph is staged on top of it
+  (see v0.5).
 - ✅ `duplication`: hashing AST subtrees (not lines) with a size threshold.
   The v0.3 MVP implements **intra-file** duplication: structurally-identical
   subtrees (hashed with identifier/literal normalization, a ≥12-node threshold,
-  a class contributing `(n-1)·s`, default weight 0.7). Cross-file copy-paste needs
-  the same whole-tree pre-pass on both refs as the full coupling graph — deferred
-  to v0.4+.
+  a class contributing `(n-1)·s`, default weight 0.7). Cross-file copy-paste needed
+  the same whole-tree pre-pass on both refs; it shipped in v0.5 as the
+  `cross_duplication` microstate.
 - Coefficient weights are revisited as new signals appear — a breaking change to
   the `S` score is possible (noted in the CHANGELOG).
 
 ## v0.4 — CI integration ✅
+
+Released 2026-06-07. Tag `v0.4.0` on master.
 
 **Goal:** turn the tool into a product inside the work loop.
 
@@ -93,7 +96,9 @@ Released 2026-06-07. Tag `v0.3.0` on master.
 > engine and the physics metaphor (the parts where entrolint is unique);
 > TypeScript and other languages move to post-1.0 / on-demand.
 
-## v0.5 — Engine depth: cross-file duplication
+## v0.5 — Engine depth: cross-file duplication ✅
+
+Released 2026-06-13. Tag `v0.5.0` on master.
 
 **Goal:** build the shared whole-tree pre-pass deferred since v0.3, and ship the
 first real cross-file metric on it — the biggest accuracy win still on the table,
@@ -191,9 +196,9 @@ Unprioritized; by whatever proves valuable in practice.
 Standing goals, pursued continuously rather than tied to one version — also the
 prerequisites for an [awesome-go](https://github.com/avelino/awesome-go) listing.
 
-- **Test coverage ≥ 80%** across non-trivial packages (currently ~78% overall;
-  `internal/cli`, `internal/scaling/typesx`, `internal/engine/gitx`, and the
-  `state_multiplier` detector lag and need attention).
+- **Test coverage ≥ 80%** across non-trivial packages — **cleared** (now ~82%
+  overall). `internal/cli`, `internal/engine/gitx`, and the `state_multiplier`
+  detector still lag and could be raised further.
 - **Go Report Card A-/A/A+**, with the badge in the README.
 - **Listed in awesome-go** (category *Code Analysis*). awesome-go requires
   ≥5 months of repository history, so entrolint is eligible from ~late October

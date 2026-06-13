@@ -11,12 +11,11 @@ import (
 
 // Duplication measures copy-pasted structure WITHIN a single Go file:
 // the size-weighted amount of redundant, structurally-identical AST
-// subtrees. v0.3 MVP — INTRA-FILE only. Two equal subtrees in the same
-// file count; a subtree duplicated ACROSS files does not, because that
-// needs a whole-tree pre-pass on both refs which breaks the per-file
-// Microstate contract `check` relies on to score isolated base/head
-// blobs. Cross-file detection is deferred to v0.4+, the same boundary
-// Coupling draws for the full Ca/Ce graph (see coupling.go).
+// subtrees. INTRA-FILE only — two equal subtrees in the same file count.
+// A subtree duplicated ACROSS files is handled by the separate
+// CrossDuplication microstate (cross_duplication.go), which lifts this
+// same kernel onto the v0.5 whole-tree corpus pre-pass; the full Ca/Ce
+// coupling graph stays deferred (see coupling.go).
 //
 // Matching is STRUCTURAL, not textual ("hashing AST subtrees, not
 // lines"): each subtree is folded Merkle-style into a 64-bit FNV-1a
@@ -166,7 +165,8 @@ func dupSubtrees(file *ast.File) []dupSub {
 
 // dupEligible reports whether a node may seed a clone class. Only
 // statements and expressions qualify; declaration-level identity
-// (*ast.FuncDecl, *ast.File) is the cross-file concern deferred to v0.4+.
+// (*ast.FuncDecl, *ast.File) is out of scope for clone seeding. The
+// cross-file CrossDuplication microstate reuses this predicate unchanged.
 func dupEligible(n ast.Node) bool {
 	switch n.(type) {
 	case ast.Stmt, ast.Expr:
