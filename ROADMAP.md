@@ -130,7 +130,7 @@ Full design: [docs/crossfile.md](docs/crossfile.md).
 
 - A static HTML report `entrolint scan --html out/`.
 - A tree heatmap (squarified treemap) by T; drill-down to the per-microstate
-  breakdown (now including the v0.5 cross-file coupling graph).
+  breakdown (now including the v0.5 cross-file `duplication` signal).
 - A phase portrait: an `S(t)` graph over git history for a window (can be
   precomputed in CI as an artifact).
 
