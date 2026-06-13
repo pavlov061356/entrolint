@@ -171,14 +171,17 @@ Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
 ## Status
 
-📦 **v0.4** (latest release) — CI integration: a drop-in `entrolint-check`
-GitHub Action that comments ΔS / scaling class / hotspots on a PR and uploads
-SARIF to Code Scanning, plus `--format markdown|sarif` output. Built on the v0.3
-structural microstates (`coupling`, `duplication`) and the v0.2 predictive
-scaling class (O-class detectors `shotgun`, `implementor_scan`,
-`switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
-`scaling_class` line next to `ΔS`). The formula, weights, and threshold are
-considered unstable until v1.0 — `S` values may shift between releases.
+📦 **v0.5** (latest release) — engine depth: a `cross_duplication` microstate
+that flags structurally-identical code copy-pasted **across** files (not just
+within one), on a whole-tree blob-corpus pre-pass run on both refs in `check`.
+Builds on the v0.4 CI integration (the drop-in `entrolint-check` GitHub Action —
+ΔS / scaling class / hotspots as a PR comment + SARIF to Code Scanning, plus
+`--format markdown|sarif`), the v0.3 structural microstates (`coupling`,
+`duplication`), and the v0.2 predictive scaling class (O-class detectors
+`shotgun`, `implementor_scan`, `switch_case_symmetry`, `identifier_fanout`,
+`state_multiplier` emit a `scaling_class` line next to `ΔS`). The formula,
+weights, and threshold are considered unstable until v1.0 — `S` values may shift
+between releases.
 
 ## License
 

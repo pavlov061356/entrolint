@@ -8,6 +8,8 @@ versions.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-13
+
 ### Added
 
 - Cross-file duplication: a new `cross_duplication` microstate detects
@@ -29,6 +31,13 @@ versions.
   Existing calibration caches auto-invalidate (the new microstate's
   lognormal is absent) and recalibrate on the next run. Full cross-file
   `coupling` (Ca/Ce) stays deferred and staged on the same pre-pass.
+- Dependencies: `golang.org/x/tools` 0.45 → 0.46. The composite
+  `entrolint-check` Action's bundled steps were bumped to
+  `actions/github-script@v9`, `github/codeql-action@v4`, and
+  `goreleaser/goreleaser-action@v7`, which run on the Node 24 Actions
+  runtime — **the Action now requires an Actions runner ≥ v2.327.1**.
+  GitHub-hosted runners satisfy this; only outdated self-hosted runners
+  are affected. Dependabot now targets the `dev` branch.
 
 ## [0.4.3] — 2026-06-07
 
