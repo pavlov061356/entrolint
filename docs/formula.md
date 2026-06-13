@@ -1,4 +1,4 @@
-# `entrolint` — formula specification (v0.1–v0.3 structural microstates)
+# `entrolint` — formula specification (v0.1–v0.5 structural microstates)
 
 This document is the canonical reference for the math of computing entropy `S`,
 temperature `T`, and a PR's `ΔS`. Before 1.0 the formula and weights are
@@ -10,8 +10,8 @@ the next.
 - **v0.1** — the only analysis language: Go. The AST source is the stdlib
   `go/ast`.
 - Structural microstates: `cyclomatic`, `nesting`, `length` (v0.1) +
-  `coupling`, `duplication` (v0.3 MVP, see [Microstates](#microstates)). `churn` feeds only
-  the temperature `T`, not `S`.
+  `coupling`, `duplication` (v0.3) + `cross_duplication` (v0.5) — see
+  [Microstates](#microstates). `churn` feeds only the temperature `T`, not `S`.
 - The weights `wᵢ` are hardcoded defaults in the binary. In v0.8 they are
   learned on a public corpus (see [What changes in v0.8](#what-changes-in-v08-weight-calibration)).
 
@@ -25,8 +25,8 @@ S_package  →   S_package = Σ S_file
 S_repo     →   S_repo    = Σ S_package
 ```
 
-`S_file_structural` is the set of terms that don't localize to a function (the
-length of the file as a whole; in the future — duplication). That's why `S_file`
+`S_file_structural` is the set of terms that don't localize to a function (file
+length, coupling, and intra-/cross-file duplication). That's why `S_file`
 is not a pure sum of functions but the sum of functions plus file-level add-ons.
 This matters for `ΔS`: if a PR changed a single function, we recompute its
 contribution and leave the rest untouched — the delta is cheap to compute.
