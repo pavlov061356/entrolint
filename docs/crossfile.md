@@ -129,15 +129,19 @@ crash.
 The pre-pass is deliberately a one-artifact struct so coupling slots in **without
 re-plumbing**:
 
-- **v0.6 — import-graph-lite.** `corpus.Build` gains a second artifact, a package
+- **First — import-graph-lite.** `corpus.Build` gains a second artifact, a package
   import graph computed from the **same** blob corpus the clone index already
   parses: `Ce` = distinct imported packages, `Ca` = inbound count, instability
   `I = Ce/(Ca+Ce)`, with intra-module-vs-external classification by import-path
   string-matching against the module path read from `<ref>:go.mod`. No
   `go/types`, no worktree — reuses the identical base+head pre-pass.
-- **v0.7+ — typed package graph.** Interface-satisfaction-aware, promoted-method
+- **Then — a typed package graph.** Interface-satisfaction-aware, promoted-method
   coupling — the tail that finally justifies materializing a base worktree and a
   second type-check.
+
+These are staged increments, not pinned versions: the canonical version sequence
+lives in the [ROADMAP](ROADMAP.md), where coupling follows the v0.6 visualization
+and v0.7 physics work.
 
 So v0.5 ships the infrastructure that makes coupling a follow-up of bounded
 scope, not a rewrite.
