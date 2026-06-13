@@ -84,11 +84,12 @@ file is absent):
 
 ```yaml
 weights:
-  cyclomatic: 1.0
-  nesting:    0.8
-  coupling:   0.6
-  length:     0.5
-  duplication: 0.7
+  cyclomatic:        1.0
+  nesting:           0.8
+  coupling:          0.6
+  length:            0.5
+  duplication:       0.7
+  cross_duplication: 0.7
 delta_s_max:       0.05   # ΔS_density threshold for check
 churn_since_days:  90     # window for the churn factor (lives in T, not S)
 ```
@@ -128,7 +129,7 @@ jobs:
 
 | Input          | Default           | Description                                                        |
 | -------------- | ----------------- | ------------------------------------------------------------------ |
-| `version`      | `latest`          | `latest`, a tag (`v0.4.0`), or `source` (build from the checkout). |
+| `version`      | `latest`          | `latest`, a tag (`v0.5.0`), or `source` (build from the checkout). |
 | `base`         | PR base branch    | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
 | `head`         | `HEAD`            | Head ref.                                                          |
 | `config`       | `.entrolint.yaml` | Path to the config; defaults to `.entrolint.yaml` at the root.     |
@@ -140,6 +141,9 @@ jobs:
 > Fork PRs get a read-only `GITHUB_TOKEN`, so the comment step is skipped on PRs
 > from forks (the Action stays on `pull_request`, not `pull_request_target`).
 
+> The Action runs on the Node 24 runtime, so it needs an Actions runner ≥ v2.327.1.
+> GitHub-hosted runners are fine; self-hosted runners must be reasonably current.
+
 ## The entropy model
 
 Entropy is a weighted sum of "microstates" — individual measurable factors of
@@ -148,13 +152,14 @@ the code can be tangled, the higher the entropy.
 
 Microstates that contribute to S:
 
-| Microstate             | What it measures                        | Since |
-| ---------------------- | --------------------------------------- | ----- |
-| Cyclomatic complexity  | how many branches there are in the code | v0.1  |
-| Nesting depth          | how deeply blocks are nested            | v0.1  |
-| Function / file length | the size of code units                  | v0.1  |
-| Coupling               | how many import specs a file has        | v0.3  |
-| Duplication            | repeated AST subtrees within a file     | v0.3  |
+| Microstate             | What it measures                          | Since |
+| ---------------------- | ----------------------------------------- | ----- |
+| Cyclomatic complexity  | how many branches there are in the code   | v0.1  |
+| Nesting depth          | how deeply blocks are nested              | v0.1  |
+| Function / file length | the size of code units                    | v0.1  |
+| Coupling               | how many import specs a file has          | v0.3  |
+| Duplication            | repeated AST subtrees within a file       | v0.3  |
+| Cross-file duplication | identical AST subtrees copy-pasted across files | v0.5 |
 
 Churn (how often a file changes) feeds the **temperature** T = S · ξ(churn) — the
 hottest spots are not merely complex but also frequently rewritten.
@@ -182,6 +187,12 @@ Builds on the v0.4 CI integration (the drop-in `entrolint-check` GitHub Action �
 `state_multiplier` emit a `scaling_class` line next to `ΔS`). The formula,
 weights, and threshold are considered unstable until v1.0 — `S` values may shift
 between releases.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). This project
+follows a [Code of Conduct](CODE_OF_CONDUCT.md), and security reports go through
+[SECURITY.md](SECURITY.md).
 
 ## License
 
