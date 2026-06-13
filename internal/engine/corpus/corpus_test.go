@@ -94,6 +94,33 @@ func TestBuild_ReconstructsTreeAndExcludesVendor(t *testing.T) {
 	}
 }
 
+// TestBuildExcluding_HoldsPathOutOfCorpus verifies the held-out path is
+// neither fetched nor indexed, so the clone class it would have formed
+// disappears and its partner carries no cross-file mass. This is the seam
+// `check` uses to keep clone membership symmetric across refs (issue #68).
+func TestBuildExcluding_HoldsPathOutOfCorpus(t *testing.T) {
+	repo := &fakeRepo{
+		tree: []string{"a.go", "b.go"},
+		blobs: map[string]string{
+			"a.go": cloneBody("A"),
+			"b.go": cloneBody("B"),
+		},
+	}
+	ctx, err := BuildExcluding(repo, "HEAD", map[string]bool{"a.go": true})
+	if err != nil {
+		t.Fatalf("BuildExcluding: %v", err)
+	}
+	if repo.fetched["a.go"] {
+		t.Error("excluded path must not be fetched")
+	}
+	if m := ctx.CrossDupMass("b.go"); m != 0 {
+		t.Errorf("with its only clone partner excluded, b.go must carry no cross-file mass, got %v", m)
+	}
+	if m := ctx.CrossDupMass("a.go"); m != 0 {
+		t.Errorf("excluded path carries no mass, got %v", m)
+	}
+}
+
 func TestContext_NilSafe(t *testing.T) {
 	var c *Context
 	if c.CrossDupMass("anything") != 0 {

@@ -84,7 +84,8 @@ func Check(opts CheckOptions) (CheckResult, error) {
 		return CheckResult{}, fmt.Errorf("fetch blobs %s...%s: %w", baseSHA, headSHA, err)
 	}
 
-	baseCx, headCx := buildCorpora(runner, baseSHA, headSHA)
+	excludeBase, excludeHead := asymmetricParseExclusions(diff.Files, baseBlobs, headBlobs)
+	baseCx, headCx := buildCorpora(runner, baseSHA, headSHA, excludeBase, excludeHead)
 
 	fileDeltas := make([]thermo.FileDelta, 0, len(diff.Files))
 	linesChanged := 0
@@ -233,13 +234,58 @@ func scoreBlob(e *thermo.Engine, blob []byte, path string, cx microstate.CrossFi
 // cross_duplication contributes 0 symmetrically and never manufactures a
 // one-sided ΔS — the same symmetric-soft-miss stance scoreBlob takes for
 // an unparseable blob.
-func buildCorpora(runner gitx.Runner, baseSHA, headSHA string) (base, head microstate.CrossFileSource) {
-	baseCx, errBase := corpus.Build(runner, baseSHA)
-	headCx, errHead := corpus.Build(runner, headSHA)
+//
+// excludeBase/excludeHead hold the diff files whose parseability differs
+// between refs out of each ref's corpus, keeping clone-class membership
+// symmetric across base and head (see asymmetricParseExclusions, issue #68).
+func buildCorpora(runner gitx.Runner, baseSHA, headSHA string, excludeBase, excludeHead map[string]bool) (base, head microstate.CrossFileSource) {
+	baseCx, errBase := corpus.BuildExcluding(runner, baseSHA, excludeBase)
+	headCx, errHead := corpus.BuildExcluding(runner, headSHA, excludeHead)
 	if errBase != nil || errHead != nil {
 		return nil, nil
 	}
 	return baseCx, headCx
+}
+
+// asymmetricParseExclusions finds diff files present on BOTH refs that
+// parse on exactly one side. Such a file sits in one ref's cross-file
+// corpus and is absent from the other, shifting a clone class's lowest-path
+// "original" between refs and perturbing a sibling's cross_duplication ΔS
+// even though the sibling did not change (issue #68). Holding it out of
+// BOTH corpora keeps clone-class membership symmetric — the same soft-miss
+// stance scoreBlob takes for an unparseable changed file (which is itself
+// dropped from ΔS, so excluding it costs no real signal).
+//
+// Only Modified/Renamed entries qualify: an Added or Removed file is
+// LEGITIMATELY one-sided, and its appearance/disappearance is a real change
+// in cross-file duplication the gate should see — excluding it would hide
+// the very signal cross_duplication exists to catch. The result is split
+// per ref because a rename is keyed by OldPath at base and Path at head.
+func asymmetricParseExclusions(files []gitx.Change, baseBlobs, headBlobs map[string][]byte) (base, head map[string]bool) {
+	base = make(map[string]bool)
+	head = make(map[string]bool)
+	for _, c := range files {
+		if !isGoPath(c) || (c.Kind != gitx.ChangeModified && c.Kind != gitx.ChangeRenamed) {
+			continue
+		}
+		bp := basePath(c)
+		if blobParses(bp, baseBlobs[bp]) != blobParses(c.Path, headBlobs[c.Path]) {
+			base[bp] = true
+			head[c.Path] = true
+		}
+	}
+	return base, head
+}
+
+// blobParses reports whether a blob is non-empty Go that parses — the same
+// "scorable" test scoreBlob applies, single-sourced so the corpus-exclusion
+// decision and the ΔS soft-miss decision agree on what "parses" means.
+func blobParses(path string, blob []byte) bool {
+	if len(blob) == 0 {
+		return false
+	}
+	_, ok := golang.ParseGoBytes(path, blob)
+	return ok
 }
 
 // applyScalingBonus folds the (always-negative) downgrade reward into

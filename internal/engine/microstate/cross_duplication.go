@@ -91,9 +91,19 @@ func CloneIndex(files []File) map[uint64]CloneClass {
 // suppression then drops a charged inner clone sitting inside a charged
 // outer clone, mirroring Duplication's outermost-only rule.
 //
-// The deterministic original (computed independently at each ref) keeps
-// ΔS honest: extracting a shared helper removes a file from the class,
-// lowering that file's mass and yielding the intended negative ΔS.
+// The original is deterministic WITHIN one corpus (lowest path among the
+// files present), so extracting a shared helper removes a file from the
+// class, lowers that file's mass, and yields the intended negative ΔS.
+// Cross-ref ΔS honesty needs one more guarantee the microstate cannot give
+// alone: the same clone class must have the SAME member set at base and
+// head. A class member that exists on both refs but parses on only one
+// (a mid-edit syntax error, an unreadable blob) would be present in one
+// corpus and absent from the other, shifting the original and perturbing a
+// sibling's ΔS. `check` enforces the missing guarantee by holding such
+// files out of both corpora (pipeline.asymmetricParseExclusions, issue #68).
+// The only residual is a file that fails to parse at BOTH refs — it is in
+// no corpus, which is correct — or a blob that flakes on fetch, an I/O
+// anomaly outside this layer's control.
 func CrossDupMassByFile(files []File) map[string]float64 {
 	charges := crossFileCharges(CloneIndex(files))
 	out := make(map[string]float64, len(charges))
