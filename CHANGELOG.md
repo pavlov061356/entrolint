@@ -8,6 +8,28 @@ versions.
 
 ## [Unreleased]
 
+### Added
+
+- Cross-file duplication: a new `cross_duplication` microstate detects
+  structurally-identical AST subtrees shared **across** files, not just
+  within one. It is built on a whole-tree blob-corpus pre-pass
+  (`internal/engine/corpus`) that reconstructs each ref from git blobs
+  (`ls-tree` + a single `cat-file --batch`) with no checkout and no
+  `go/types`, run symmetrically on the base and head refs in `check`. New
+  `gitx.TreeFiles` / `gitx.BlobsAtRef` plumbing backs it. Default weight
+  0.7. See `docs/crossfile.md`. (v0.5)
+
+### Changed
+
+- Adding the `cross_duplication` microstate recalibrates `S`: files that
+  share copy-pasted blocks across the tree now score higher. The v0.3
+  `duplication` and `coupling` microstates are unchanged, and
+  `cross_duplication` charges only clone classes spanning more than one
+  file, so the two partition the clone space without double-counting.
+  Existing calibration caches auto-invalidate (the new microstate's
+  lognormal is absent) and recalibrate on the next run. Full cross-file
+  `coupling` (Ca/Ce) stays deferred and staged on the same pre-pass.
+
 ## [0.4.3] — 2026-06-07
 
 ### Changed

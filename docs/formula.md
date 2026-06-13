@@ -67,6 +67,7 @@ regression weights.
 | `length`       | v0.1     | file        | LOC excluding comments and blank lines                                                                    | direct                  |
 | `coupling`     | v0.3     | file        | `len(f.AST.Imports)` — the number of import specs (including stdlib, dot, blank, CGO `"C"`, aliased)      | direct                  |
 | `duplication`  | v0.3     | file        | size-weighted mass of repeated AST subtrees within the file (structural hash, identifier/literal normalization, threshold ≥12 nodes) | direct |
+| `cross_duplication` | v0.5 | file   | size-weighted mass of AST subtrees the file shares with **other** files (same structural hash, ≥12 nodes); the lowest-path copy in each clone class is the free "original", every other file pays the class size once | direct |
 | `churn`        | v0.1     | file        | number of commits that touched the file in a 90-day window (`git log --follow --since`)                   | direct                  |
 
 `coupling` in v0.3 is an MVP: a per-file import count as a proxy for efferent
@@ -81,8 +82,12 @@ Structurally-identical AST subtrees (a hash, not lines; identifiers and literals
 are normalized — so it catches copy-paste even after a rename) are counted as
 repeats; a class of `n` copies of a subtree of size `s` contributes `(n-1)·s`,
 and nested clones are not counted twice (only the outermost one counts).
-Cross-file copy-paste needs a whole-tree pre-pass on both refs; it is planned for
-v0.5 as the `cross_duplication` microstate on a blob-corpus pre-pass — see the
+Cross-file copy-paste ships in v0.5 as the separate **`cross_duplication`**
+microstate (above): the same structural hash, run over a whole-tree blob-corpus
+pre-pass on both refs in `check`, charging each clone class's redundant mass to
+every file past the lowest-path "original". The two microstates partition the
+clone space — same-file classes are `duplication`'s, multi-file classes are
+`cross_duplication`'s — so they never double-count. See the
 [cross-file design](crossfile.md).
 
 Note: `nesting` is aggregated by maximum, not by sum. Deep nesting is a local
@@ -144,15 +149,20 @@ recomputed only by the `entrolint recalibrate` command.
 
 Hardcoded constants in the binary, overridable via `.entrolint.yaml`:
 
-| Microstate     | Default | Since |
-| -------------- | ------- | ----- |
-| `cyclomatic`   | 1.0     | v0.1  |
-| `nesting`      | 0.8     | v0.1  |
-| `coupling`     | 0.6     | v0.3  |
-| `length`       | 0.5     | v0.1  |
-| `duplication`  | 0.7     | v0.3  |
+| Microstate          | Default | Since |
+| ------------------- | ------- | ----- |
+| `cyclomatic`        | 1.0     | v0.1  |
+| `nesting`           | 0.8     | v0.1  |
+| `coupling`          | 0.6     | v0.3  |
+| `length`            | 0.5     | v0.1  |
+| `duplication`       | 0.7     | v0.3  |
+| `cross_duplication` | 0.7     | v0.5  |
 
 `churn` is absent from this table — it's not part of `S` (see below).
+
+The v0.5 `cross_duplication` weight (0.7, mirroring `duplication`) is a starting
+value pending an empirical calibration pass — cross-file mass is heavier-tailed
+than intra-file, so it may be retuned (a CHANGELOG-noted `S` shift).
 
 ## Temperature `T_file`
 
@@ -160,7 +170,7 @@ A fundamental architectural decision: **`churn` is not a microstate of `S`**. It
 lives only in the temperature:
 
 ```
-S_file = static structural entropy (cyclomatic + nesting + length + coupling + duplication)
+S_file = static structural entropy (cyclomatic + nesting + length + coupling + duplication + cross_duplication)
 T_file = S_file · ξ(churn_count)
 ξ(c)   = 1 + α · ln(1 + c),  α ≈ 0.5
 ```

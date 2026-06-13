@@ -197,11 +197,12 @@ func B(x int) {
 		K:       999.0,
 		Alpha:   0.5,
 		Microstates: map[string]thermo.LogNormalParams{
-			"cyclomatic":  {Mu: 0, Sigma: 1, Valid: true},
-			"nesting":     {Mu: 0, Sigma: 1, Valid: true},
-			"length":      {Mu: 0, Sigma: 1, Valid: true},
-			"coupling":    {Mu: 0, Sigma: 1, Valid: true},
-			"duplication": {Mu: 0, Sigma: 1, Valid: true},
+			"cyclomatic":        {Mu: 0, Sigma: 1, Valid: true},
+			"nesting":           {Mu: 0, Sigma: 1, Valid: true},
+			"length":            {Mu: 0, Sigma: 1, Valid: true},
+			"coupling":          {Mu: 0, Sigma: 1, Valid: true},
+			"duplication":       {Mu: 0, Sigma: 1, Valid: true},
+			"cross_duplication": {Mu: 0, Sigma: 1, Valid: true},
 		},
 	}
 	if err := cache.Save(cachePath, bogus); err != nil {

@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/pavlov061356/entrolint/internal/engine/analyzer/golang"
+	"github.com/pavlov061356/entrolint/internal/engine/corpus"
 	"github.com/pavlov061356/entrolint/internal/engine/gitx"
+	"github.com/pavlov061356/entrolint/internal/engine/microstate"
 	"github.com/pavlov061356/entrolint/internal/engine/thermo"
 	"github.com/pavlov061356/entrolint/internal/scaling"
 )
@@ -82,13 +84,15 @@ func Check(opts CheckOptions) (CheckResult, error) {
 		return CheckResult{}, fmt.Errorf("fetch blobs %s...%s: %w", baseSHA, headSHA, err)
 	}
 
+	baseCx, headCx := buildCorpora(runner, baseSHA, headSHA)
+
 	fileDeltas := make([]thermo.FileDelta, 0, len(diff.Files))
 	linesChanged := 0
 	for _, c := range diff.Files {
 		if !isGoPath(c) {
 			continue
 		}
-		fd, ok := scoreFromCache(engine, baseBlobs, headBlobs, c)
+		fd, ok := scoreFromCache(engine, baseBlobs, headBlobs, baseCx, headCx, c)
 		if !ok {
 			continue
 		}
@@ -174,27 +178,32 @@ func fetchSide(runner gitx.Runner, want bool, ref, path, key string, into map[st
 }
 
 // scoreFromCache turns a single diff entry into a thermo.FileDelta
-// using the pre-fetched blob maps. Returns ok=false when the change
-// should be silently excluded (parse failure on either side of a
-// Modified/Renamed entry — the asymmetry would otherwise read as a
-// fake refactor).
-func scoreFromCache(e *thermo.Engine, baseBlobs, headBlobs map[string][]byte, c gitx.Change) (thermo.FileDelta, bool) {
+// using the pre-fetched blob maps and the per-ref cross-file corpora.
+// Returns ok=false when the change should be silently excluded (parse
+// failure on either side of a Modified/Renamed entry — the asymmetry
+// would otherwise read as a fake refactor).
+//
+// The base side is keyed and parsed under basePath(c) (OldPath for a
+// rename) so the base corpus — enumerated by base-side ls-tree paths —
+// is queried with the name it knows; using the head-side c.Path would
+// miss a renamed file's cross-file mass and manufacture spurious ΔS.
+func scoreFromCache(e *thermo.Engine, baseBlobs, headBlobs map[string][]byte, baseCx, headCx microstate.CrossFileSource, c gitx.Change) (thermo.FileDelta, bool) {
 	switch c.Kind {
 	case gitx.ChangeAdded:
-		s, ok := scoreBlob(e, headBlobs[c.Path], c.Path)
+		s, ok := scoreBlob(e, headBlobs[c.Path], c.Path, headCx)
 		if !ok {
 			return thermo.FileDelta{}, false
 		}
 		return thermo.MakeFileDelta(c.Path, thermo.DeltaAdded, 0, s), true
 	case gitx.ChangeRemoved:
-		s, ok := scoreBlob(e, baseBlobs[c.Path], c.Path)
+		s, ok := scoreBlob(e, baseBlobs[c.Path], basePath(c), baseCx)
 		if !ok {
 			return thermo.FileDelta{}, false
 		}
 		return thermo.MakeFileDelta(c.Path, thermo.DeltaRemoved, s, 0), true
 	default: // ChangeModified or ChangeRenamed
-		sBase, okB := scoreBlob(e, baseBlobs[c.Path], c.Path)
-		sHead, okH := scoreBlob(e, headBlobs[c.Path], c.Path)
+		sBase, okB := scoreBlob(e, baseBlobs[c.Path], basePath(c), baseCx)
+		sHead, okH := scoreBlob(e, headBlobs[c.Path], c.Path, headCx)
 		if !okB || !okH {
 			return thermo.FileDelta{}, false
 		}
@@ -202,10 +211,11 @@ func scoreFromCache(e *thermo.Engine, baseBlobs, headBlobs map[string][]byte, c 
 	}
 }
 
-// scoreBlob parses + scores a single blob. ok=false means the blob is
-// missing or unparseable — both treated identically by ComputeDelta
-// callers per the symmetric soft-miss rule.
-func scoreBlob(e *thermo.Engine, blob []byte, path string) (float64, bool) {
+// scoreBlob parses + scores a single blob, attaching the ref's cross-file
+// corpus (nil-safe) so the cross_duplication microstate sees its mass.
+// ok=false means the blob is missing or unparseable — both treated
+// identically by ComputeDelta callers per the symmetric soft-miss rule.
+func scoreBlob(e *thermo.Engine, blob []byte, path string, cx microstate.CrossFileSource) (float64, bool) {
 	if len(blob) == 0 {
 		return 0, false
 	}
@@ -213,7 +223,23 @@ func scoreBlob(e *thermo.Engine, blob []byte, path string) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
+	f.Corpus = cx
 	return e.Score(f).S, true
+}
+
+// buildCorpora builds the whole-tree cross-file context at the base and
+// head refs for the cross_duplication microstate. On any failure (git
+// unavailable, a ref that won't enumerate) BOTH sides degrade to nil so
+// cross_duplication contributes 0 symmetrically and never manufactures a
+// one-sided ΔS — the same symmetric-soft-miss stance scoreBlob takes for
+// an unparseable blob.
+func buildCorpora(runner gitx.Runner, baseSHA, headSHA string) (base, head microstate.CrossFileSource) {
+	baseCx, errBase := corpus.Build(runner, baseSHA)
+	headCx, errHead := corpus.Build(runner, headSHA)
+	if errBase != nil || errHead != nil {
+		return nil, nil
+	}
+	return baseCx, headCx
 }
 
 // applyScalingBonus folds the (always-negative) downgrade reward into
