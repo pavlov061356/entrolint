@@ -160,6 +160,54 @@ func TestCheck_CrossFileCloneRaisesHeadEntropy(t *testing.T) {
 	}
 }
 
+// TestCheck_CrossDupDisabledSkipsCorpusPrepass verifies that when the
+// cross_duplication weight is ≤ 0 the whole-tree corpus pre-pass is skipped
+// entirely (no ls-tree enumeration) — its contribution would be zeroed
+// anyway, so the expensive fetch+parse is not paid. Scoring still proceeds
+// from the changed-file blobs, so the added file is scored as normal.
+func TestCheck_CrossDupDisabledSkipsCorpusPrepass(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, crossCalibCorpus())
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	fr := &fakeRunner{
+		t:          t,
+		resolved:   map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff:    []byte(rawRecord("000000", "100644", "0000000000000000000000000000000000000000", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "A", "z_new.go", "")),
+		numstatOut: []byte(numRecord(12, 0, "z_new.go", "")),
+		blobs: map[string][]byte{
+			headSHA + ":z_new.go":      []byte(body3("Znew")),
+			headSHA + ":a_existing.go": []byte(body3("Aexist")),
+		},
+		tree: map[string][]string{headSHA: {"a_existing.go", "z_new.go"}},
+	}
+
+	cfg := config.Default()
+	cfg.Weights["cross_duplication"] = 0
+
+	res, err := Check(CheckOptions{
+		Root:        dir,
+		Base:        "base",
+		Head:        "head",
+		ScanOptions: ScanOptions{Config: cfg},
+		GitRunner:   fr,
+	})
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if fr.lsTreeCount != 0 {
+		t.Errorf("corpus pre-pass must be skipped when cross_duplication is disabled, got %d ls-tree calls", fr.lsTreeCount)
+	}
+	if len(res.Delta.Files) != 1 || res.Delta.Files[0].Path != "z_new.go" {
+		t.Fatalf("added file must still be scored, got %+v", res.Delta.Files)
+	}
+	if res.Delta.Files[0].SHead <= 0 {
+		t.Errorf("scoring must proceed without the corpus, got SHead=%v", res.Delta.Files[0].SHead)
+	}
+}
+
 // TestCheck_AsymmetricParseOfPartnerDoesNotPerturbSibling is the issue #68
 // regression: a clone class's lowest-path partner is unparseable at base
 // only, and the assertion is that an UNCHANGED sibling clone's ΔS is not

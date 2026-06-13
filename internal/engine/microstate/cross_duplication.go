@@ -59,25 +59,57 @@ type CloneClass struct {
 // stay structurally identical. Exposed for reporting (which files share
 // a block) and tests.
 func CloneIndex(files []File) map[uint64]CloneClass {
-	occ := make(map[uint64][]CloneOccurrence)
-	size := make(map[uint64]int)
+	// Two passes over the parsed ASTs. Pass 1 counts eligible subtrees per
+	// structural digest; pass 2 materializes a CloneOccurrence slice ONLY for
+	// digests that recur — the singleton subtrees, the vast majority of any
+	// tree, never cost an occurrence. This trades a second O(nodes) walk over
+	// the already-parsed ASTs for the peak memory of holding every unique
+	// subtree's occurrence on a large corpus.
+	count, size := countCloneCandidates(files)
+	out := make(map[uint64]CloneClass)
+	for h, n := range count {
+		if n >= 2 {
+			out[h] = CloneClass{Hash: h, Size: size[h]}
+		}
+	}
+	if len(out) > 0 { // skip the second walk entirely when there are no clones
+		collectCloneOccurrences(files, out)
+	}
+	return out
+}
+
+// countCloneCandidates counts eligible subtrees per structural digest and
+// records each digest's node count (constant across its occurrences by
+// construction, so last-write-wins is exact). Pass 1 of CloneIndex.
+func countCloneCandidates(files []File) (count, size map[uint64]int) {
+	count = make(map[uint64]int)
+	size = make(map[uint64]int)
 	for _, f := range files {
 		if f.AST == nil {
 			continue
 		}
 		for _, s := range dupSubtrees(f.AST) {
-			occ[s.hash] = append(occ[s.hash], CloneOccurrence{Path: f.Path, pos: s.pos, end: s.end})
+			count[s.hash]++
 			size[s.hash] = s.size
 		}
 	}
-	out := make(map[uint64]CloneClass, len(occ))
-	for h, os := range occ {
-		if len(os) < 2 {
+	return count, size
+}
+
+// collectCloneOccurrences appends every occurrence of a surviving (recurring)
+// digest to its class. Pass 2 of CloneIndex.
+func collectCloneOccurrences(files []File, classes map[uint64]CloneClass) {
+	for _, f := range files {
+		if f.AST == nil {
 			continue
 		}
-		out[h] = CloneClass{Hash: h, Size: size[h], Occ: os}
+		for _, s := range dupSubtrees(f.AST) {
+			if cc, ok := classes[s.hash]; ok {
+				cc.Occ = append(cc.Occ, CloneOccurrence{Path: f.Path, pos: s.pos, end: s.end})
+				classes[s.hash] = cc
+			}
+		}
 	}
-	return out
 }
 
 // CrossDupMassByFile computes, per file path, the cross-file duplication
