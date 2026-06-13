@@ -72,16 +72,18 @@ regression weights.
 `coupling` in v0.3 is an MVP: a per-file import count as a proxy for efferent
 coupling. The full Martin-style Ca/Ce/instability graph needs a whole-tree
 pre-pass on both refs in `check` (where only the blobs of the changed files are
-available) and is deferred until such infrastructure is needed for another
-detector. See [ROADMAP](ROADMAP.md#v03--coupling--duplication).
+available). v0.5 builds that pre-pass (for cross-file duplication first); real
+coupling is staged on top of it — an import-graph-lite step, then a typed package
+graph. See the [cross-file design](crossfile.md#the-corpuscontext-seam-staged-coupling).
 
 `duplication` in v0.3 is also an MVP: **intra-file** duplication only.
 Structurally-identical AST subtrees (a hash, not lines; identifiers and literals
 are normalized — so it catches copy-paste even after a rename) are counted as
 repeats; a class of `n` copies of a subtree of size `s` contributes `(n-1)·s`,
 and nested clones are not counted twice (only the outermost one counts).
-Cross-file copy-paste needs the same whole-tree pre-pass on both refs as the full
-coupling graph, and is deferred to v0.4+.
+Cross-file copy-paste needs a whole-tree pre-pass on both refs; it is planned for
+v0.5 as the `cross_duplication` microstate on a blob-corpus pre-pass — see the
+[cross-file design](crossfile.md).
 
 Note: `nesting` is aggregated by maximum, not by sum. Deep nesting is a local
 defect: a file with one horrendously nested function is worse than a file where
