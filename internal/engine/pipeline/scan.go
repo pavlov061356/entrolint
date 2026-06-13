@@ -14,6 +14,7 @@ import (
 	"github.com/pavlov061356/entrolint/internal/engine/analyzer/golang"
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
 	"github.com/pavlov061356/entrolint/internal/engine/config"
+	"github.com/pavlov061356/entrolint/internal/engine/corpus"
 	"github.com/pavlov061356/entrolint/internal/engine/gitx"
 	"github.com/pavlov061356/entrolint/internal/engine/microstate"
 	"github.com/pavlov061356/entrolint/internal/engine/thermo"
@@ -53,9 +54,11 @@ type ScanResult struct {
 
 // structuralMicrostates lists the contributors to S (churn lives only in T).
 // v0.1: cyclomatic, nesting, length. v0.3 adds coupling (per-file import count
-// as efferent-coupling proxy) and duplication (intra-file AST-subtree clones);
-// cross-file coupling (Ca/Ce graph) and cross-file duplication are both deferred
-// to v0.4+ as they need a whole-tree pre-pass that check's blob scoring cannot give.
+// as efferent-coupling proxy) and duplication (intra-file AST-subtree clones).
+// v0.5 adds cross_duplication (clones spanning more than one file), fed by the
+// corpus pre-pass attached to each File before scoring (see attachCorpus). Full
+// cross-file coupling (the Ca/Ce graph) stays deferred — it needs go/types, not
+// just ASTs; see docs/crossfile.md.
 func structuralMicrostates() []microstate.Microstate {
 	return []microstate.Microstate{
 		microstate.Cyclomatic{},
@@ -63,6 +66,7 @@ func structuralMicrostates() []microstate.Microstate {
 		microstate.Length{},
 		microstate.Coupling{},
 		microstate.Duplication{},
+		microstate.CrossDuplication{},
 	}
 }
 
@@ -88,7 +92,26 @@ func analyzeTree(opts ScanOptions) ([]microstate.File, error) {
 		ChurnRunner:    gitx.LocalRunner{Dir: rootAbs},
 		ChurnSinceDays: opts.Config.ChurnSinceDays,
 	}
-	return a.Analyze(opts.Root)
+	files, err := a.Analyze(opts.Root)
+	if err != nil {
+		return nil, err
+	}
+	attachCorpus(files)
+	return files, nil
+}
+
+// attachCorpus runs the cross-file pre-pass over the freshly analyzed
+// tree and attaches the resulting context to every File, in place. This
+// is load-bearing for both Scan and calibrateForCheck: the cross_duplication
+// microstate's lognormal is fit during calibration, so its per-file mass
+// must be visible on the corpus BEFORE the slice reaches thermo.Calibrate
+// — otherwise it calibrates on all-zeros and silently contributes nothing.
+// The scan path needs no git: the whole on-disk tree is already in `files`.
+func attachCorpus(files []microstate.File) {
+	ctx := corpus.BuildFromFiles(files)
+	for i := range files {
+		files[i].Corpus = ctx
+	}
 }
 
 func resolveEngine(opts ScanOptions, ms []microstate.Microstate, files []microstate.File) *thermo.Engine {
