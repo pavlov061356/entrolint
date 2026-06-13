@@ -199,10 +199,12 @@ scope, not a rewrite.
 
 ## Open questions
 
-- **Weight / floor.** Ship `cross_duplication` at `0.7`, or run a calibration
-  pass first? Cross-file mass is heavier-tailed than intra-file; an over-eager
-  weight could let it dominate `ΔS`. Recommendation: ship `0.7`, but calibrate on
-  a real repo before locking, and consider a lower floor for this microstate.
+- **Weight / floor — resolved.** A calibration pass over several real Go
+  repositories validated `0.7` (mirroring `duplication`). Contrary to the original
+  worry, cross-file clone mass is **not** heavier-tailed than intra-file mass — it
+  is consistently smaller — so an equal weight does not let it dominate `ΔS`, and
+  the flagged cross-file clones are genuine, recognizable duplication (high
+  precision). The weight may be re-tuned under v0.8's learned calibration.
 - **De-duplication as a reward.** When a PR extracts a shared helper (the intended
   reward), the canonical first copy may shift files between base and head. Confirm
   the deterministic `(path, pos)` ordering + symmetric base/head computation
@@ -214,7 +216,8 @@ scope, not a rewrite.
   `duplication`; multi-file classes → `cross_duplication`).
 - **Reporting.** Surface `cross_duplication` in `scan`'s per-file contribution
   breakdown and/or list the clone pairs (which files share a block)? The index has
-  the member paths for free.
+  the member paths for free. Tracked in #59 — the calibration pass showed the clone
+  pairs are recognizable and actionable, so this is a strong candidate for v0.5.
 - **Large-repo deferral trigger.** Decide the repo size at which the
   whole-tree-at-both-refs fetch needs the changed-package-only optimization.
 

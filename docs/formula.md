@@ -160,9 +160,14 @@ Hardcoded constants in the binary, overridable via `.entrolint.yaml`:
 
 `churn` is absent from this table — it's not part of `S` (see below).
 
-The v0.5 `cross_duplication` weight (0.7, mirroring `duplication`) is a starting
-value pending an empirical calibration pass — cross-file mass is heavier-tailed
-than intra-file, so it may be retuned (a CHANGELOG-noted `S` shift).
+The v0.5 `cross_duplication` weight (0.7, mirroring `duplication`) was validated
+by a calibration pass over several real Go repositories. Cross-file clone mass is
+**not** heavier-tailed than intra-file `duplication` — across the sampled repos it
+is consistently *smaller* — so a weight equal to `duplication`'s does not let it
+dominate `ΔS` (and the per-microstate lognormal CDF absorbs the distribution
+either way). The cross-file clones flagged on real codebases are genuine,
+recognizable duplication, not coincidental structural matches. The weight may
+still be re-tuned under v0.8's learned calibration.
 
 ## Temperature `T_file`
 
