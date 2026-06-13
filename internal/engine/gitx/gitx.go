@@ -28,6 +28,17 @@ type Runner interface {
 	Run(args ...string) ([]byte, error)
 }
 
+// BatchRunner is an optional Runner capability: running a git command
+// with bytes piped to its stdin. It exists for `cat-file --batch`,
+// which reads object names from stdin. LocalRunner implements it;
+// BlobsAtRef type-asserts for it and falls back to a per-file loop
+// (FileAtRef) when a runner — e.g. a hermetic test fake — only
+// implements Run.
+type BatchRunner interface {
+	Runner
+	RunStdin(stdin []byte, args ...string) ([]byte, error)
+}
+
 // LocalRunner runs git via the host system's git binary, anchored at
 // Dir via `git -C`.
 type LocalRunner struct {
@@ -43,11 +54,25 @@ type LocalRunner struct {
 // ErrInvalidRef classification) see stable English messages
 // regardless of the user's locale.
 func (r LocalRunner) Run(args ...string) ([]byte, error) {
+	return r.run(nil, args...)
+}
+
+// RunStdin runs `git -C <Dir> <args...>` with `stdin` piped to the
+// process, returning stdout. Used by cat-file --batch. Error semantics
+// match Run. Implements BatchRunner.
+func (r LocalRunner) RunStdin(stdin []byte, args ...string) ([]byte, error) {
+	return r.run(stdin, args...)
+}
+
+func (r LocalRunner) run(stdin []byte, args ...string) ([]byte, error) {
 	// #nosec G204 -- git arguments are constructed internally from
 	// fixed log flags and a path supplied by trusted callers; entrolint
 	// never passes user input directly into git invocations.
 	cmd := exec.Command("git", append([]string{"-C", r.Dir}, args...)...)
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C", "LANGUAGE=C")
+	if stdin != nil {
+		cmd.Stdin = bytes.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

@@ -24,6 +24,11 @@ type fakeRunner struct {
 	numstatOut  []byte
 	unifiedDiff []byte            // `git diff --unified=0 …` payload for DiffResult.Patches
 	blobs       map[string][]byte // "<ref>:<path>" -> content
+	// tree maps a ref (sha) to the paths `git ls-tree` reports there,
+	// driving the corpus pre-pass's whole-tree enumeration. Left nil by
+	// most tests — an empty tree yields an empty corpus, so
+	// cross_duplication contributes 0 and does not perturb their ΔS.
+	tree map[string][]string
 	// catFileErr lets a test force a specific error for a given
 	// "<ref>:<path>" key — used to exercise fatal-error propagation
 	// (e.g. gitx.ErrUnavailable firing mid-loop) without ad-hoc
@@ -68,6 +73,18 @@ func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 				strings.SplitN(key, ":", 2)[1], strings.SplitN(key, ":", 2)[0])
 		}
 		return blob, nil
+	case "ls-tree":
+		// args: ["ls-tree", "-r", "--name-only", "-z", "<ref>"]
+		// Drives corpus.Build's whole-tree enumeration. The fake only
+		// implements Run, so BlobsAtRef falls back to per-file cat-file
+		// blob lookups against f.blobs — no batch stdin needed.
+		ref := args[len(args)-1]
+		var b strings.Builder
+		for _, p := range f.tree[ref] {
+			b.WriteString(p)
+			b.WriteByte('\x00')
+		}
+		return []byte(b.String()), nil
 	}
 	// NOTE: `log` is not handled here — calibration uses LocalRunner via
 	// scan.analyzeTree (analyzer hardcodes its ChurnRunner), so it never
