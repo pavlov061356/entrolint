@@ -93,18 +93,36 @@ Released 2026-06-07. Tag `v0.3.0` on master.
 > engine and the physics metaphor (the parts where entrolint is unique);
 > TypeScript and other languages move to post-1.0 / on-demand.
 
-## v0.5 — Engine depth: cross-file coupling & duplication
+## v0.5 — Engine depth: cross-file duplication
 
-**Goal:** turn the v0.3 per-file MVPs into the real cross-file metrics — the
-biggest accuracy win still on the table, squarely in Go's wheelhouse.
+**Goal:** build the shared whole-tree pre-pass deferred since v0.3, and ship the
+first real cross-file metric on it — the biggest accuracy win still on the table,
+squarely in Go's wheelhouse.
 
-- Full `coupling` as a Robert-Martin Ca/Ce/instability graph (efferent **and**
-  afferent coupling), not just a per-file import count.
-- Cross-file `duplication`: structurally-identical AST subtrees detected
-  *across* files, not only within one.
-- Both need a whole-tree pre-pass on both refs in `check` — the shared
-  infrastructure deferred since v0.3. Build it once; both detectors consume it.
-- Recalibration with a CHANGELOG-noted `S` shift as the signals get richer.
+- A blob-corpus **pre-pass** (`internal/engine/corpus`): the whole tree at a ref,
+  reconstructed from git blobs (`ls-tree` + a single `cat-file --batch`) and
+  parsed with the existing `ParseGoBytes` — no checkout, no `go/types`. It runs
+  symmetrically on **both** the base and head refs in `check`.
+- Cross-file **`duplication`** (`cross_duplication` microstate): structurally-
+  identical AST subtrees detected *across* files, by lifting the existing
+  intra-file Merkle clone kernel to a corpus-wide index. Additive — the v0.3
+  per-file `duplication` and `coupling` microstates are untouched, so `S` cannot
+  regress.
+- Recalibration with a CHANGELOG-noted `S` shift as the new signal lands.
+
+Full design: [docs/crossfile.md](docs/crossfile.md).
+
+> **Coupling, staged (revised 2026-06-13).** Original v0.5 was "cross-file
+> coupling **and** duplication". Duplication needs no type information; real
+> Martin-style `Ca/Ce/instability` does (a type-checked or `go.mod`-resolved
+> package graph), and the base ref isn't checked out — the typed path needs a
+> materialized base worktree plus a second type-check, too much risk for one
+> release. So coupling is split off and staged on top of the v0.5 pre-pass: an
+> *import-graph-lite* increment (efferent/afferent by import-path matching on the
+> same blob corpus, no `go/types`) first, then the typed package graph
+> (interface-satisfaction-aware) as the tail. Both are additive `CorpusContext`
+> artifacts — see [docs/crossfile.md](docs/crossfile.md#the-corpuscontext-seam-staged-coupling).
+> The v0.3 per-file import-count proxy stays meanwhile.
 
 ## v0.6 — HTML heatmap & visualization
 
