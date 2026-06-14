@@ -3,6 +3,7 @@ package report
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 
 	"github.com/pavlov061356/entrolint/internal/engine/pipeline"
@@ -23,10 +24,11 @@ const (
 
 // SARIFOptions tunes the temperature bands that map a file's T to a
 // Code Scanning severity. A file is reported only when its T reaches
-// NoteFloor; warning/error escalate at WarnAt/ErrorAt. Defaults
-// (1.0 / 1.5 / 3.0) keep the floor near the calibrated median so the
-// log reads as a hotspot backlog, not every file. Revisit once real
-// Code Scanning noise is observed.
+// NoteFloor; warning/error escalate at WarnAt/ErrorAt. The default
+// floor/warn bands (1.0 / 1.5) keep the floor near the calibrated median so
+// the log reads as a hotspot backlog, not every file; ErrorAt is disabled by
+// default until v1.0 (see DefaultSARIFOptions). Revisit once real Code
+// Scanning noise is observed.
 type SARIFOptions struct {
 	ToolVersion string
 	NoteFloor   float64
@@ -35,9 +37,16 @@ type SARIFOptions struct {
 }
 
 // DefaultSARIFOptions returns the documented default bands for the given
-// tool version.
+// tool version. Until the formula stabilises at v1.0 the severity is capped
+// at `warning`: an admittedly-unstable metric must not raise `error`, which
+// GitHub Code Scanning treats as a BLOCKING check failure — that would
+// contradict entrolint's advisory-until-v1.0 stance (the dogfood Action runs
+// with fail-on-gate:false yet a single error-level SARIF result still reds the
+// check). So error is disabled by default (ErrorAt = +Inf, never reached); a
+// consumer who wants a hard error band sets ErrorAt explicitly, and v1.0 will
+// restore a finite default.
 func DefaultSARIFOptions(toolVersion string) SARIFOptions {
-	return SARIFOptions{ToolVersion: toolVersion, NoteFloor: 1.0, WarnAt: 1.5, ErrorAt: 3.0}
+	return SARIFOptions{ToolVersion: toolVersion, NoteFloor: 1.0, WarnAt: 1.5, ErrorAt: math.Inf(1)}
 }
 
 // normalize fills in default bands when the caller left them zero (the
