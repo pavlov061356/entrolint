@@ -78,7 +78,8 @@ type htmlData struct {
 }
 
 // htmlCell is one placed file rectangle. The JSON tags drive the in-page
-// drill-down, which reads the same slice the SVG is rendered from.
+// drill-down, which reads the same slice the SVG is rendered from. Label/Label2
+// are SVG-only (json:"-"), the at-a-glance text painted onto the tile.
 type htmlCell struct {
 	Path          string             `json:"path"`
 	X             float64            `json:"x"`
@@ -90,6 +91,8 @@ type htmlCell struct {
 	Fill          string             `json:"fill"`
 	Dominant      string             `json:"dominant"`
 	Contributions map[string]float64 `json:"contributions"`
+	Label         string             `json:"-"`
+	Label2        string             `json:"-"`
 }
 
 // rect is an axis-aligned rectangle in canvas units.
@@ -173,6 +176,7 @@ func computeWeight(n *treeNode) float64 {
 // file leaf. Directories are inset by dirPad so nesting is legible.
 func layout(n *treeNode, r rect, scale heatScale, out *[]htmlCell) {
 	if n.score != nil {
+		name, stat := tileLabels(n.score, r)
 		*out = append(*out, htmlCell{
 			Path:          n.score.Path,
 			X:             round(r.x),
@@ -184,6 +188,8 @@ func layout(n *treeNode, r rect, scale heatScale, out *[]htmlCell) {
 			Fill:          scale.color(n.score.T),
 			Dominant:      n.score.Dominant,
 			Contributions: n.score.Contributions,
+			Label:         name,
+			Label2:        stat,
 		})
 		return
 	}
@@ -201,6 +207,50 @@ func layout(n *treeNode, r rect, scale heatScale, out *[]htmlCell) {
 		}
 		layout(child, cr, scale, out)
 	}
+}
+
+// Label geometry, in canvas units (the SVG scales them with the map).
+const (
+	labelFontPx = 12.5
+	labelCharW  = labelFontPx * 0.6 // monospace advance width estimate
+	labelPad    = 4.0
+)
+
+// tileLabels returns the at-a-glance text painted on a tile: the file's
+// basename (line 1) and a compact "S · T" line (line 2). Each is emitted only
+// when it fits — the basename is truncated with an ellipsis to the tile width,
+// and a tile too small for even that gets no label and keeps just its hover
+// tooltip. This makes the map readable without clicking every rectangle.
+func tileLabels(s *pipeline.FileScore, r rect) (name, stat string) {
+	maxChars := int((r.w - 2*labelPad) / labelCharW)
+	if maxChars < 3 || r.h < labelFontPx+labelPad {
+		return "", ""
+	}
+	name = truncateLabel(baseName(s.Path), maxChars)
+	if r.h >= 3*labelFontPx { // room for a second line
+		if st := fmt.Sprintf("S %.1f · T %.1f", s.S, s.T); len([]rune(st)) <= maxChars {
+			stat = st
+		}
+	}
+	return name, stat
+}
+
+func baseName(p string) string {
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+func truncateLabel(s string, maxChars int) string {
+	r := []rune(s)
+	if len(r) <= maxChars {
+		return s
+	}
+	if maxChars <= 1 {
+		return "…"
+	}
+	return string(r[:maxChars-1]) + "…"
 }
 
 type placement struct {

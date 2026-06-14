@@ -22,6 +22,10 @@
   rect.cell { stroke:var(--bg); stroke-width:.75; cursor:pointer; transition:opacity .1s; }
   rect.cell:hover { opacity:.78; }
   rect.cell.sel { stroke:#fff; stroke-width:1.5; }
+  text.lbl, text.lbl2 { fill:#fff; pointer-events:none; paint-order:stroke;
+                        stroke:rgba(0,0,0,.55); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  text.lbl  { font-size:12.5px; font-weight:600; stroke-width:2.6px; }
+  text.lbl2 { font-size:11px; opacity:.82; stroke-width:2px; }
   aside { width:320px; border-left:1px solid var(--line); background:var(--panel);
           padding:16px; overflow-y:auto; }
   aside .hint { color:var(--muted); }
@@ -49,6 +53,7 @@
     <svg viewBox="0 0 {{.Width}} {{.Height}}" preserveAspectRatio="xMidYMid meet">
       {{range $i, $c := .Cells}}<rect class="cell" data-i="{{$i}}" x="{{$c.X}}" y="{{$c.Y}}" width="{{$c.W}}" height="{{$c.H}}" fill="{{$c.Fill}}"><title>{{$c.Path}}
 S={{printf "%.2f" $c.S}}  T={{printf "%.2f" $c.T}}</title></rect>
+{{if $c.Label}}<text class="lbl" x="{{$c.X}}" y="{{$c.Y}}" dx="4" dy="15">{{$c.Label}}</text>{{end}}{{if $c.Label2}}<text class="lbl2" x="{{$c.X}}" y="{{$c.Y}}" dx="4" dy="30">{{$c.Label2}}</text>{{end}}
       {{end}}
     </svg>
   </div>

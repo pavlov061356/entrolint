@@ -127,6 +127,44 @@ func TestTreemap_HotterFileIsRedder(t *testing.T) {
 	}
 }
 
+// TestTreemap_LabelsLargeTilesOnly: a large tile carries its filename so the
+// map is legible without clicking; a tiny tile omits the label (it relies on
+// the hover tooltip) rather than overflow.
+func TestTreemap_LabelsLargeTilesOnly(t *testing.T) {
+	cells := layoutTreemap([]pipeline.FileScore{
+		score("internal/engine/big_file.go", 100, 1),
+		score("x.go", 0.001, 1),
+	})
+	var big, tiny htmlCell
+	for _, c := range cells {
+		switch c.Path {
+		case "internal/engine/big_file.go":
+			big = c
+		case "x.go":
+			tiny = c
+		}
+	}
+	if big.Label != "big_file.go" {
+		t.Errorf("large tile label = %q, want %q", big.Label, "big_file.go")
+	}
+	if tiny.Label != "" {
+		t.Errorf("tiny tile must omit its label, got %q", tiny.Label)
+	}
+}
+
+func TestTileLabels_FitTruncateOmit(t *testing.T) {
+	s := score("a/averylongfilename.go", 2, 3)
+	if n, st := tileLabels(&s, rect{0, 0, 300, 60}); n != "averylongfilename.go" || st == "" {
+		t.Errorf("wide+tall tile: got name=%q stat=%q, want full name and an S·T line", n, st)
+	}
+	if n, st := tileLabels(&s, rect{0, 0, 70, 20}); !strings.HasSuffix(n, "…") || st != "" {
+		t.Errorf("narrow tile: got name=%q stat=%q, want truncated name and no stat", n, st)
+	}
+	if n, _ := tileLabels(&s, rect{0, 0, 10, 10}); n != "" {
+		t.Errorf("tiny tile: got name=%q, want no label", n)
+	}
+}
+
 func overlapArea(a, b htmlCell) float64 {
 	ox := math.Max(0, math.Min(a.X+a.W, b.X+b.W)-math.Max(a.X, b.X))
 	oy := math.Max(0, math.Min(a.Y+a.H, b.Y+b.H)-math.Max(a.Y, b.Y))
