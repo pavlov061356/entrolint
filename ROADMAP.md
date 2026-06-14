@@ -131,7 +131,7 @@ Full design: [docs/crossfile.md](docs/crossfile.md).
 
 ## v0.6 — HTML heatmap & visualization ✅
 
-Released 2026-06-13. Tag `v0.6.0` on master.
+Released 2026-06-14. Tag `v0.6.0` on master.
 
 **Goal:** a heat map you wouldn't be ashamed to show the team.
 
