@@ -31,7 +31,9 @@ the code will be to maintain, and shows how that number changes with every chang
 
 Walks the codebase, computes an entropy score (S) for every file and package, and
 highlights **hotspots** — the places with the highest entropy. These are the
-first candidates for refactoring.
+first candidates for refactoring. `entrolint scan --html out/` renders the same
+data as a self-contained HTML treemap (tile area = `S`, colour = `T`) — see
+[docs/heatmap.md](docs/heatmap.md).
 
 ### `check` — a pull-request gate
 
@@ -55,6 +57,9 @@ Or download a prebuilt binary from the [latest release](https://github.com/pavlo
 # The 10 hottest files in the repo:
 entrolint scan --top 10
 
+# A self-contained HTML heat map of the whole repo (writes out/index.html):
+entrolint scan --html out/
+
 # PR gate: compare a feature branch against dev, fail if the threshold is exceeded.
 entrolint check --base dev --head HEAD
 
@@ -76,6 +81,10 @@ Both commands take `--format`:
 | `check` | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
 
 (`--json` is a deprecated alias for `--format json`.)
+
+`scan --html <dir>` is separate from `--format`: it writes a self-contained HTML
+heat map to `<dir>/index.html` (a squarified treemap with a per-microstate
+drill-down, no external assets), rendering the whole repo rather than the table.
 
 ## Configuration
 
@@ -129,7 +138,7 @@ jobs:
 
 | Input          | Default           | Description                                                        |
 | -------------- | ----------------- | ------------------------------------------------------------------ |
-| `version`      | `latest`          | `latest`, a tag (`v0.5.0`), or `source` (build from the checkout). |
+| `version`      | `latest`          | `latest`, a tag (`v0.6.0`), or `source` (build from the checkout). |
 | `base`         | PR base branch    | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
 | `head`         | `HEAD`            | Head ref.                                                          |
 | `config`       | `.entrolint.yaml` | Path to the config; defaults to `.entrolint.yaml` at the root.     |
@@ -176,17 +185,20 @@ Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
 ## Status
 
-📦 **v0.5** (latest release) — engine depth: a `cross_duplication` microstate
-that flags structurally-identical code copy-pasted **across** files (not just
-within one), on a whole-tree blob-corpus pre-pass run on both refs in `check`.
-Builds on the v0.4 CI integration (the drop-in `entrolint-check` GitHub Action —
-ΔS / scaling class / hotspots as a PR comment + SARIF to Code Scanning, plus
-`--format markdown|sarif`), the v0.3 structural microstates (`coupling`,
-`duplication`), and the v0.2 predictive scaling class (O-class detectors
-`shotgun`, `implementor_scan`, `switch_case_symmetry`, `identifier_fanout`,
-`state_multiplier` emit a `scaling_class` line next to `ΔS`). The formula,
-weights, and threshold are considered unstable until v1.0 — `S` values may shift
-between releases.
+📦 **v0.6** (latest release) — visualization: an HTML **heat map** you can show
+the team. `entrolint scan --html out/` writes a self-contained squarified treemap
+of the repo (tile area = entropy `S`, colour = temperature `T`), grouped by
+package, with file labels and a click-through per-microstate breakdown. The same
+release hardens the v0.5 engine — a `ΔS`-symmetry fix and a markedly cheaper
+`check` cross-file pre-pass. Builds on the v0.5 `cross_duplication` microstate
+(structurally-identical code copy-pasted **across** files), the v0.4 CI
+integration (the drop-in `entrolint-check` GitHub Action — ΔS / scaling class /
+hotspots as a PR comment + SARIF to Code Scanning, plus `--format markdown|sarif`),
+the v0.3 structural microstates (`coupling`, `duplication`), and the v0.2
+predictive scaling class (O-class detectors `shotgun`, `implementor_scan`,
+`switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
+`scaling_class` line next to `ΔS`). The formula, weights, and threshold are
+considered unstable until v1.0 — `S` values may shift between releases.
 
 ## Contributing
 

@@ -43,7 +43,8 @@ func BuildFromFiles(files []microstate.File) *Context {
 // clone-class membership symmetric across refs — see issue #68 and
 // microstate.CrossDupMassByFile). No git access: this is the seam that
 // lets `check` feed the corpus the same bytes it already fetched, and that
-// the staged v0.6 coupling pre-pass will reuse over the same blob set.
+// the staged coupling pre-pass (import-graph-lite) will reuse over the same
+// blob set.
 func BuildFromBlobs(blobs map[string][]byte, exclude map[string]bool) *Context {
 	paths := make([]string, 0, len(blobs))
 	for p := range blobs {
