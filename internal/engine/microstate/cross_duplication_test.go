@@ -203,6 +203,71 @@ func TestCrossDupMassByFile_OrderIndependent(t *testing.T) {
 	if a, b := mass(zNestedFirst), mass(zStandaloneFirst); a != b {
 		t.Errorf("cross mass must not depend on source order: nestedFirst=%v standaloneFirst=%v", a, b)
 	}
+
+	// Lock the exact mass, not just order-independence. There are two
+	// cross-file clone classes: the inner for-loop (27 nodes), shared by
+	// b_inner.go and z.go; and the outer if-block (32 nodes, which CONTAINS
+	// an inner copy), shared by a_outer.go and z.go. a_outer.go and b_inner.go
+	// are each the lowest path in their class, so they are the free originals
+	// (a_outer.go pays 0; b_inner.go pays the inner class once = 27).
+	//
+	// z.go participates in BOTH classes and pays each once = 32 + 27 = 59.
+	// The inner copy NESTED inside z's outer block is suppressed (counted
+	// under the outer class), but z's STANDALONE inner copy is a separate,
+	// non-nested occurrence and is charged. This pins the outermost-only rule
+	// AND the cross-file class partition — a regression that double-counted
+	// the nested inner, or dropped the standalone inner, would move 59.
+	const (
+		wantZ float64 = 59 // outer (32) + standalone inner (27)
+		wantB float64 = 27 // inner class, charged once
+	)
+	for name, src := range map[string]string{"nestedFirst": zNestedFirst, "standaloneFirst": zStandaloneFirst} {
+		got := CrossDupMassByFile([]File{
+			parseF(t, "a_outer.go", "package p\n\nfunc A(n int) int {\n\tacc, total := 0, 0\n"+outer(inner)+"\treturn total\n}\n"),
+			parseF(t, "b_inner.go", "package p\n\nfunc B(n int) int {\n\tacc, total := 0, 0\n"+inner+"\treturn total\n}\n"),
+			parseF(t, "z.go", src),
+		})
+		if got["z.go"] != wantZ {
+			t.Errorf("%s: z.go mass = %v, want %v (outer 32 + standalone inner 27)", name, got["z.go"], wantZ)
+		}
+		if got["b_inner.go"] != wantB {
+			t.Errorf("%s: b_inner.go mass = %v, want %v (inner class once)", name, got["b_inner.go"], wantB)
+		}
+		if got["a_outer.go"] != 0 {
+			t.Errorf("%s: a_outer.go is the original, must pay 0, got %v", name, got["a_outer.go"])
+		}
+	}
+}
+
+// TestOutermostSubtrees_DropsNestedKeepsStandalone directly exercises the
+// shared nesting helper: an inner clone positionally inside a larger kept
+// clone is dropped, while a standalone copy of that same clone (outside any
+// kept clone) survives — and the result is the same regardless of input
+// order (the sort imposes a total order).
+func TestOutermostSubtrees_DropsNestedKeepsStandalone(t *testing.T) {
+	outerC := dupSub{hash: 1, size: 10, pos: 1, end: 100}
+	nestedInner := dupSub{hash: 2, size: 4, pos: 10, end: 50}       // inside outerC -> dropped
+	standaloneInner := dupSub{hash: 2, size: 4, pos: 200, end: 240} // outside -> kept
+
+	for _, order := range [][]dupSub{
+		{outerC, nestedInner, standaloneInner},
+		{standaloneInner, nestedInner, outerC},
+		{nestedInner, standaloneInner, outerC},
+	} {
+		kept := outermostSubtrees(order)
+		if len(kept) != 2 {
+			t.Fatalf("input %v: kept %d, want 2 (outer + standalone inner)", order, len(kept))
+		}
+		// Largest first: outer clone leads, standalone inner follows.
+		if kept[0] != outerC || kept[1] != standaloneInner {
+			t.Errorf("input %v: kept = %v, want [outer, standaloneInner]", order, kept)
+		}
+		for _, k := range kept {
+			if k == nestedInner {
+				t.Errorf("input %v: nested inner clone must be dropped", order)
+			}
+		}
+	}
 }
 
 func distinctFiles(cc CloneClass) map[string]bool {

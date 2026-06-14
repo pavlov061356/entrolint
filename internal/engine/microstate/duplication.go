@@ -67,23 +67,15 @@ func (Duplication) Measure(f File) float64 {
 		counts[s.hash]++
 	}
 
-	// Keep only duplicated subtrees, largest first, then drop any that
-	// sit inside an already-kept (enclosing) clone so the outer block's
-	// nodes are not counted again via a duplicated inner block.
+	// Keep only duplicated subtrees, then reduce to the outermost ones so an
+	// outer block's nodes are not counted again via a duplicated inner block.
 	dup := make([]dupSub, 0, len(subs))
 	for _, s := range subs {
 		if counts[s.hash] >= 2 {
 			dup = append(dup, s)
 		}
 	}
-	sort.Slice(dup, func(i, j int) bool { return dup[i].size > dup[j].size })
-
-	kept := make([]dupSub, 0, len(dup))
-	for _, s := range dup {
-		if !dupNested(s, kept) {
-			kept = append(kept, s)
-		}
-	}
+	kept := outermostSubtrees(dup)
 
 	// Re-group the outermost clones and sum the redundant mass.
 	keptCount := make(map[uint64]int, len(kept))
@@ -120,6 +112,39 @@ func dupNested(s dupSub, kept []dupSub) bool {
 		}
 	}
 	return false
+}
+
+// outermostSubtrees keeps only the outermost clone subtrees: it sorts
+// largest-first and drops any that sit inside an already-kept larger clone,
+// so an inner clone is never counted again under its enclosing one. It
+// single-sources the outermost-only nesting rule shared by intra-file
+// Duplication.Measure and cross-file outermostMass — the two charge the
+// kept set differently, but the keep-the-outermost step is identical.
+//
+// The sort key (size desc, pos asc, end asc) is a STRICT total order on the
+// input: two distinct subtrees here never share all three of (size, pos,
+// end). A subtree that contains another has strictly more nodes (larger
+// size), and two subtrees with the same start position and the same node
+// count are the same subtree. So the kept set is independent of the caller's
+// input order and of map iteration order — i.e. of source layout.
+func outermostSubtrees(cs []dupSub) []dupSub {
+	sort.Slice(cs, func(i, j int) bool {
+		switch {
+		case cs[i].size != cs[j].size:
+			return cs[i].size > cs[j].size
+		case cs[i].pos != cs[j].pos:
+			return cs[i].pos < cs[j].pos
+		default:
+			return cs[i].end < cs[j].end
+		}
+	})
+	kept := make([]dupSub, 0, len(cs))
+	for _, s := range cs {
+		if !dupNested(s, kept) {
+			kept = append(kept, s)
+		}
+	}
+	return kept
 }
 
 // dupSubtrees walks the file once, folding each node's structural digest

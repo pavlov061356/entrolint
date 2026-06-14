@@ -219,6 +219,10 @@ func scoreFromCache(e *thermo.Engine, baseBlobs, headBlobs map[string][]byte, ba
 // corpus (nil-safe) so the cross_duplication microstate sees its mass.
 // ok=false means the blob is missing or unparseable — both treated
 // identically by ComputeDelta callers per the symmetric soft-miss rule.
+//
+// cx supplies this ref's cross_duplication mass, but the engine's lognormal
+// fit is HEAD-frame for both refs — the base mass is normalized through the
+// head-fitted CDF (see calibrateForCheck's calibration-frame note).
 func scoreBlob(e *thermo.Engine, blob []byte, path string, cx microstate.CrossFileSource) (float64, bool) {
 	if len(blob) == 0 {
 		return 0, false
@@ -336,6 +340,18 @@ func applyScalingBonus(d thermo.Delta, bonus float64) thermo.Delta {
 // calibrateForCheck fits (or loads from cache) the engine against the
 // working tree at Root. Calibration uses the same logic as Scan so a
 // single `.entrolint-cache.json` is shared between commands.
+//
+// Calibration frame for cross_duplication: the lognormal (μ,σ) is fit on the
+// HEAD working-tree corpus, and BOTH the base and head blob-corpus masses are
+// then normalized through that single HEAD-frame CDF (see scoreBlob). Unlike
+// the other microstates — whose raw value is intrinsic to one file — a file's
+// cross_duplication mass is a function of the whole corpus, so a base file's
+// mass is scored against a curve fit on the head tree. This is a deliberate,
+// acceptable simplification: each microstate has its OWN CDF (so the head-frame
+// curve is cross_duplication's alone), the base and head corpora are kept
+// membership-symmetric (asymmetricParseExclusions, #68), and the typical
+// base↔head shift in the mass distribution is small. Fitting on the base∪head
+// union instead is the deferred refinement, not a correctness fix.
 func calibrateForCheck(opts CheckOptions) (*thermo.Engine, error) {
 	scanOpts := opts.ScanOptions
 	scanOpts.Root = opts.Root

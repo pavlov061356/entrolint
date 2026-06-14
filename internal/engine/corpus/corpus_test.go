@@ -1,11 +1,14 @@
 package corpus
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/pavlov061356/entrolint/internal/engine/analyzer/golang"
+	"github.com/pavlov061356/entrolint/internal/engine/gitx"
 	"github.com/pavlov061356/entrolint/internal/engine/microstate"
 )
 
@@ -156,6 +159,152 @@ func TestContext_NilSafe(t *testing.T) {
 	var c *Context
 	if c.CrossDupMass("anything") != 0 {
 		t.Error("nil *Context must return 0")
+	}
+}
+
+// batchFakeRunner implements BatchRunner (Run + RunStdin), so gitx.BlobsAtRef
+// takes the production `cat-file --batch` path rather than the per-file
+// fallback. It answers ls-tree from `tree` and emits real batch records from
+// RunStdin, and records which path was taken so a test can assert the batch
+// path is exercised end-to-end (the dominant performance lever, otherwise
+// covered only by Run-only fakes).
+type batchFakeRunner struct {
+	t            *testing.T
+	tree         []string
+	blobs        map[string]string
+	batchCalled  bool
+	perFileCalls int
+}
+
+func (b *batchFakeRunner) Run(args ...string) ([]byte, error) {
+	b.t.Helper()
+	switch args[0] {
+	case "ls-tree":
+		var sb strings.Builder
+		for _, p := range b.tree {
+			sb.WriteString(p)
+			sb.WriteByte(0)
+		}
+		return []byte(sb.String()), nil
+	case "cat-file":
+		b.perFileCalls++ // the per-file fallback — should not run when batch works
+		path := strings.SplitN(args[2], ":", 2)[1]
+		if c, ok := b.blobs[path]; ok {
+			return []byte(c), nil
+		}
+		return nil, fmt.Errorf("fatal: path '%s' does not exist in 'HEAD'", path)
+	}
+	b.t.Fatalf("unhandled fake call: %v", args)
+	return nil, nil
+}
+
+// RunStdin streams `cat-file --batch`: it parses the `<ref>:<path>` specs and
+// emits one `<oid> blob <size>\n<bytes>\n` record per found path (or a
+// `<spec> missing\n` line), exactly the format gitx.parseBatch decodes.
+func (b *batchFakeRunner) RunStdin(stdin []byte, _ ...string) ([]byte, error) {
+	b.t.Helper()
+	b.batchCalled = true
+	var out bytes.Buffer
+	for _, spec := range strings.Split(strings.TrimSpace(string(stdin)), "\n") {
+		if spec == "" {
+			continue
+		}
+		path := strings.SplitN(spec, ":", 2)[1]
+		if c, ok := b.blobs[path]; ok {
+			fmt.Fprintf(&out, "aaaa blob %d\n", len(c))
+			out.WriteString(c)
+			out.WriteByte('\n')
+		} else {
+			fmt.Fprintf(&out, "%s missing\n", spec)
+		}
+	}
+	return out.Bytes(), nil
+}
+
+// TestBuild_BatchPathFetchesAll exercises the production batch path: a runner
+// that implements BatchRunner must have its blobs streamed through RunStdin
+// (`cat-file --batch`), never the per-file fallback, and still build a correct
+// corpus.
+func TestBuild_BatchPathFetchesAll(t *testing.T) {
+	fr := &batchFakeRunner{
+		t:    t,
+		tree: []string{"a.go", "b.go"},
+		blobs: map[string]string{
+			"a.go": cloneBody("A"),
+			"b.go": cloneBody("B"),
+		},
+	}
+	ctx, err := Build(fr, "HEAD")
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !fr.batchCalled {
+		t.Error("RunStdin (cat-file --batch) was never called: batch path not taken")
+	}
+	if fr.perFileCalls != 0 {
+		t.Errorf("per-file cat-file ran %d times: batch path should make it 0", fr.perFileCalls)
+	}
+	if ctx.CrossDupMass("a.go") != 0 {
+		t.Errorf("lowest path is the free original, got %v", ctx.CrossDupMass("a.go"))
+	}
+	if ctx.CrossDupMass("b.go") <= 0 {
+		t.Errorf("non-original must carry mass from the batch-built corpus, got %v", ctx.CrossDupMass("b.go"))
+	}
+}
+
+// errorFakeRunner injects a failure into either ls-tree enumeration or the
+// batch fetch, to pin that Build surfaces fatal git errors (wrapped to the
+// gitx sentinels) instead of silently degrading to an empty corpus.
+type errorFakeRunner struct {
+	t         *testing.T
+	tree      []string
+	lsTreeErr error
+	batchErr  error
+}
+
+func (e *errorFakeRunner) Run(args ...string) ([]byte, error) {
+	e.t.Helper()
+	if args[0] == "ls-tree" {
+		if e.lsTreeErr != nil {
+			return nil, e.lsTreeErr
+		}
+		var sb strings.Builder
+		for _, p := range e.tree {
+			sb.WriteString(p)
+			sb.WriteByte(0)
+		}
+		return []byte(sb.String()), nil
+	}
+	e.t.Fatalf("unhandled fake call: %v", args)
+	return nil, nil
+}
+
+func (e *errorFakeRunner) RunStdin(_ []byte, _ ...string) ([]byte, error) {
+	e.t.Helper()
+	if e.batchErr != nil {
+		return nil, e.batchErr
+	}
+	e.t.Fatalf("unexpected batch call")
+	return nil, nil
+}
+
+func TestBuild_LsTreeFailureSurfacesInvalidRef(t *testing.T) {
+	fr := &errorFakeRunner{t: t, lsTreeErr: fmt.Errorf("fatal: Not a valid object name nonexistent")}
+	if _, err := Build(fr, "nonexistent"); !errors.Is(err, gitx.ErrInvalidRef) {
+		t.Errorf("ls-tree failure: err = %v, want ErrInvalidRef wrapped", err)
+	}
+}
+
+func TestBuild_BatchFailurePropagates(t *testing.T) {
+	// ls-tree succeeds (one analyzable path), so the batch fetch is reached;
+	// its failure must propagate, not be swallowed into an empty corpus.
+	fr := &errorFakeRunner{
+		t:        t,
+		tree:     []string{"a.go"},
+		batchErr: fmt.Errorf("fatal: Not a valid object name badref"),
+	}
+	if _, err := Build(fr, "HEAD"); !errors.Is(err, gitx.ErrInvalidRef) {
+		t.Errorf("batch failure: err = %v, want ErrInvalidRef wrapped", err)
 	}
 }
 

@@ -2,7 +2,6 @@ package microstate
 
 import (
 	"go/token"
-	"sort"
 )
 
 // CrossDuplication measures copy-pasted structure ACROSS files: the
@@ -79,8 +78,10 @@ func CloneIndex(files []File) map[uint64]CloneClass {
 }
 
 // countCloneCandidates counts eligible subtrees per structural digest and
-// records each digest's node count (constant across its occurrences by
-// construction, so last-write-wins is exact). Pass 1 of CloneIndex.
+// records each digest's node count. size[hash] is last-write-wins, which is
+// exact: every subtree sharing a digest is structurally identical, so it has
+// the same inclusive node count by construction — every write stores the same
+// value, whatever the file or traversal order. Pass 1 of CloneIndex.
 func countCloneCandidates(files []File) (count, size map[uint64]int) {
 	count = make(map[uint64]int)
 	size = make(map[uint64]int)
@@ -181,34 +182,19 @@ func distinctFilesAndOriginal(cc CloneClass) (files map[string]bool, original st
 	return files, original
 }
 
-// outermostMass charges one class size per cross-file clone class the
-// file participates in, after dropping occurrences nested inside an
-// already-counted larger clone — mirroring Duplication's outermost-only
-// rule so an inner clone is not double-counted under its enclosing clone.
-// Occurrences are ordered by (size desc, pos asc, end asc) — a total
-// order, since each AST node has a unique span within its file — so the
-// charge is independent of source layout and map iteration order. A class
-// appearing several non-nested times in one file is still charged once
-// (each non-original file pays its class size a single time).
+// outermostMass charges one class size per cross-file clone class the file
+// participates in, after dropping occurrences nested inside an already-counted
+// larger clone — the same outermost-only rule Duplication uses, via the shared
+// outermostSubtrees helper, so an inner clone is not double-counted under its
+// enclosing clone. The kept set is independent of source layout and map
+// iteration order (see outermostSubtrees). A class appearing several non-nested
+// times in one file is still charged once (each non-original file pays its
+// class size a single time).
 func outermostMass(cs []dupSub) float64 {
-	sort.Slice(cs, func(i, j int) bool {
-		switch {
-		case cs[i].size != cs[j].size:
-			return cs[i].size > cs[j].size
-		case cs[i].pos != cs[j].pos:
-			return cs[i].pos < cs[j].pos
-		default:
-			return cs[i].end < cs[j].end
-		}
-	})
-	kept := make([]dupSub, 0, len(cs))
-	charged := make(map[uint64]bool, len(cs))
+	kept := outermostSubtrees(cs)
+	charged := make(map[uint64]bool, len(kept))
 	mass := 0
-	for _, c := range cs {
-		if dupNested(c, kept) {
-			continue
-		}
-		kept = append(kept, c)
+	for _, c := range kept {
 		if !charged[c.hash] {
 			charged[c.hash] = true
 			mass += c.size
