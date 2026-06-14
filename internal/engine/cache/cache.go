@@ -57,15 +57,24 @@ func Load(path string) (State, error) {
 	return s, nil
 }
 
-// HasAll reports whether the cached state has lognormal params for
-// every microstate in ms. A missing entry means the cache was written
-// before a new microstate was added — thermo.normalize would silently
-// return 0 for the missing one, dropping its weighted contribution
-// from S. Callers should treat HasAll=false as a cache miss and
-// recalibrate.
+// HasAll reports whether the cached state was calibrated against every
+// microstate in names. It checks only that each key is PRESENT: a missing
+// key means the cache predates that microstate (a stale cache), so callers
+// treat HasAll=false as a miss and recalibrate. A present-but-degenerate
+// entry (Valid:false) is NOT a miss — it is a legitimately cached result
+// for a microstate that had no signal in the corpus it was fit on (e.g.
+// cross_duplication or duplication on a clone-free repo).
+//
+// Counting a degenerate fit as "absent" would force a full recalibration on
+// every run of any repo with a sparse microstate — and would be inconsistent
+// with the project's "calibrate once, manual `entrolint recalibrate`"
+// contract, under which a Valid:true fit also goes stale silently as the
+// repo evolves. The cached degenerate params are safe to keep: thermo.normalize
+// returns 0 for a !Valid microstate, so it correctly contributes nothing to S
+// (which is exactly right while that microstate has no signal).
 func (s State) HasAll(names []string) bool {
 	for _, n := range names {
-		if p, ok := s.Microstates[n]; !ok || !p.Valid {
+		if _, ok := s.Microstates[n]; !ok {
 			return false
 		}
 	}
