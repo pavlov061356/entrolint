@@ -106,15 +106,25 @@ func TestHasAll(t *testing.T) {
 	}
 }
 
-func TestHasAll_InvalidParamsCountAsMissing(t *testing.T) {
+func TestHasAll_PresentButDegenerateCountsAsCached(t *testing.T) {
+	// A present-but-degenerate (Valid:false) microstate is a legitimately
+	// cached result for a microstate with no signal in its corpus (e.g.
+	// cross_duplication on a clone-free repo). It must NOT force a
+	// recalibration every run — only a missing key (a stale cache that
+	// predates the microstate) does. thermo.normalize returns 0 for the
+	// degenerate params, so it still scores correctly as 0.
 	s := State{
 		Microstates: map[string]thermo.LogNormalParams{
 			"cyclomatic": {Mu: 1, Sigma: 1, Valid: true},
-			"coupling":   {Valid: false},
+			"coupling":   {Valid: false}, // present, fit on a corpus with no signal
 		},
 	}
-	if s.HasAll([]string{"cyclomatic", "coupling"}) {
-		t.Error("HasAll returned true with Invalid params — should treat as missing")
+	if !s.HasAll([]string{"cyclomatic", "coupling"}) {
+		t.Error("present-but-degenerate microstate must count as cached, not missing")
+	}
+	// A key absent from the map IS a miss (cache predates the microstate).
+	if s.HasAll([]string{"cyclomatic", "coupling", "length"}) {
+		t.Error("a microstate absent from the cache must force recalibration")
 	}
 }
 

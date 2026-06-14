@@ -92,9 +92,12 @@ reporting, not the public tracker. See [SECURITY.md](SECURITY.md).
 
 `entrolint` is intentionally focused. Out of scope right now:
 
-- Languages other than Go (TypeScript planned for v0.5).
-- HTML / heatmap UI (v0.7).
-- Anything requiring network I/O or a server.
+- A second analysis language (Go-only for now; another language is deferred to
+  post-1.0 — pre-1.0 effort deepens Go).
+- A hosted web UI, dashboard, or server. (The static, self-contained HTML heat
+  map shipped in v0.6 — `scan --html` — but it is a generated file, not a
+  running service.)
+- Anything requiring network I/O.
 - Coverage padding, feature flags, or backwards-compatibility shims for
   pre-1.0 internal APIs.
 

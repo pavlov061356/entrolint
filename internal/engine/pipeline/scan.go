@@ -96,7 +96,9 @@ func analyzeTree(opts ScanOptions) ([]microstate.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	attachCorpus(files)
+	if crossDupEnabled(opts.Config.Weights) {
+		attachCorpus(files)
+	}
 	return files, nil
 }
 

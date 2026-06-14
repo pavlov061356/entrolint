@@ -50,7 +50,7 @@ func TestScanSARIF_ValidJSONAndBands(t *testing.T) {
 		t.Fatalf("results = %d, want 3 (cold file below floor)", len(run.Results))
 	}
 	wantLevels := map[string]string{
-		"internal/hot/burn.go":  levelError,   // T 3.40 ≥ 3.0
+		"internal/hot/burn.go":  levelWarning, // T 3.40: error is capped to warning pre-v1.0
 		"internal/warm/heat.go": levelWarning, // T 1.90 ≥ 1.5
 		"internal/mild/note.go": levelNote,    // T 1.10 ≥ 1.0
 	}
@@ -73,6 +73,45 @@ func TestScanSARIF_ValidJSONAndBands(t *testing.T) {
 		if r.PartialFingerprints["entrolintPath"] != uri {
 			t.Errorf("%s fingerprint = %q, want %q", uri, r.PartialFingerprints["entrolintPath"], uri)
 		}
+	}
+}
+
+func TestScanSARIF_DefaultNeverEmitsError(t *testing.T) {
+	// Pre-v1.0 the default caps at warning so GitHub Code Scanning never reds
+	// an advisory run. Even a very hot file must not reach `error`.
+	out, err := ScanSARIF([]pipeline.FileScore{{Path: "blaze.go", S: 9, T: 99, Dominant: "cyclomatic"}}, DefaultSARIFOptions("0.6.0"))
+	if err != nil {
+		t.Fatalf("ScanSARIF: %v", err)
+	}
+	var log sarifLog
+	if err := json.Unmarshal(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.Runs[0].Results[0].Level; got != levelWarning {
+		t.Errorf("default level for T=99 = %q, want %q (error disabled pre-v1.0)", got, levelWarning)
+	}
+}
+
+func TestScanSARIF_ExplicitErrorBandStillEscalates(t *testing.T) {
+	// The error band is opt-in: a consumer who wants a hard band sets ErrorAt.
+	opts := DefaultSARIFOptions("0.6.0")
+	opts.ErrorAt = 3.0
+	out, err := ScanSARIF(sampleScores(), opts)
+	if err != nil {
+		t.Fatalf("ScanSARIF: %v", err)
+	}
+	var log sarifLog
+	if err := json.Unmarshal(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	var burn string
+	for _, r := range log.Runs[0].Results {
+		if r.Locations[0].PhysicalLocation.ArtifactLocation.URI == "internal/hot/burn.go" {
+			burn = r.Level
+		}
+	}
+	if burn != levelError {
+		t.Errorf("with explicit ErrorAt=3.0, burn.go (T=3.40) level = %q, want %q", burn, levelError)
 	}
 }
 

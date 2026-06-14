@@ -8,6 +8,44 @@ versions.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-13
+
+### Added
+
+- HTML heat map: `entrolint scan --html <dir>` writes a self-contained
+  `index.html` — a squarified treemap of the repository where each file's
+  rectangle **area is its entropy `S`** and its **colour is its temperature
+  `T`**, with files grouped into their package regions, file-name labels
+  painted on the tiles, and a click-through per-microstate breakdown (the v0.5
+  `cross_duplication` signal included). No network or external assets and
+  deterministic output, so it works offline and is safe to publish as a CI
+  artifact. Pure report layer — no engine change. (v0.6)
+
+### Changed
+
+- `check`'s cross-file pre-pass is markedly cheaper: changed blobs are fetched
+  in one batched `cat-file` instead of one subprocess per file, the corpus
+  reuses those blobs rather than re-fetching them (each blob is read from git
+  once), `CloneIndex` is two-pass (occurrence slices are materialised only for
+  digests that recur), and the whole pre-pass is skipped when the
+  `cross_duplication` weight is ≤ 0. No `ΔS` change. (#69)
+- The calibration cache no longer forces a full recalibration on every run of a
+  repo where a microstate has no signal (e.g. `cross_duplication` on a
+  clone-free repo): a present-but-degenerate fit now counts as cached,
+  consistent with the "calibrate once, manual `recalibrate`" contract. (#70)
+- SARIF severity is capped at `warning` until v1.0. An admittedly-unstable
+  metric must not raise `error`, which GitHub Code Scanning treats as a
+  **blocking** check failure — contradicting entrolint's advisory stance. A hard
+  error band remains available to consumers via an explicit `ErrorAt`.
+
+### Fixed
+
+- `cross_duplication` could perturb the `ΔS` of an **unchanged** file when a
+  clone partner parsed on only one ref (a mid-edit syntax error, an unreadable
+  blob): the shifting partner moved a clone class's free "original" between
+  refs. Such files are now held out of **both** ref corpora, keeping
+  clone-class membership symmetric across base and head. (#68)
+
 ## [0.5.1] — 2026-06-13
 
 ### Changed
@@ -296,7 +334,8 @@ left in place rather than re-pointed.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/pavlov061356/entrolint/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/pavlov061356/entrolint/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pavlov061356/entrolint/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/pavlov061356/entrolint/compare/v0.4.2...v0.4.3

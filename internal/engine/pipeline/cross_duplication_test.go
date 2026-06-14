@@ -1,9 +1,12 @@
 package pipeline
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/pavlov061356/entrolint/internal/engine/config"
+	"github.com/pavlov061356/entrolint/internal/engine/gitx"
+	"github.com/pavlov061356/entrolint/internal/engine/thermo"
 )
 
 // Three clone "bodies" of increasing block size. Each is reused verbatim
@@ -156,6 +159,263 @@ func TestCheck_CrossFileCloneRaisesHeadEntropy(t *testing.T) {
 	if sHeadWith <= sHeadNo {
 		t.Errorf("a head cross-file clone must raise SHead: with partner %v, without %v",
 			sHeadWith, sHeadNo)
+	}
+}
+
+// TestCheck_CrossDupDisabledSkipsCorpusPrepass verifies that when the
+// cross_duplication weight is ≤ 0 the whole-tree corpus pre-pass is skipped
+// entirely (no ls-tree enumeration) — its contribution would be zeroed
+// anyway, so the expensive fetch+parse is not paid. Scoring still proceeds
+// from the changed-file blobs, so the added file is scored as normal.
+func TestCheck_CrossDupDisabledSkipsCorpusPrepass(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, crossCalibCorpus())
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	fr := &fakeRunner{
+		t:          t,
+		resolved:   map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff:    []byte(rawRecord("000000", "100644", "0000000000000000000000000000000000000000", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "A", "z_new.go", "")),
+		numstatOut: []byte(numRecord(12, 0, "z_new.go", "")),
+		blobs: map[string][]byte{
+			headSHA + ":z_new.go":      []byte(body3("Znew")),
+			headSHA + ":a_existing.go": []byte(body3("Aexist")),
+		},
+		tree: map[string][]string{headSHA: {"a_existing.go", "z_new.go"}},
+	}
+
+	cfg := config.Default()
+	cfg.Weights["cross_duplication"] = 0
+
+	res, err := Check(CheckOptions{
+		Root:        dir,
+		Base:        "base",
+		Head:        "head",
+		ScanOptions: ScanOptions{Config: cfg},
+		GitRunner:   fr,
+	})
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if fr.lsTreeCount != 0 {
+		t.Errorf("corpus pre-pass must be skipped when cross_duplication is disabled, got %d ls-tree calls", fr.lsTreeCount)
+	}
+	if len(res.Delta.Files) != 1 || res.Delta.Files[0].Path != "z_new.go" {
+		t.Fatalf("added file must still be scored, got %+v", res.Delta.Files)
+	}
+	if res.Delta.Files[0].SHead <= 0 {
+		t.Errorf("scoring must proceed without the corpus, got SHead=%v", res.Delta.Files[0].SHead)
+	}
+}
+
+// TestCheck_AsymmetricParseOfPartnerDoesNotPerturbSibling is the issue #68
+// regression: a clone class's lowest-path partner is unparseable at base
+// only, and the assertion is that an UNCHANGED sibling clone's ΔS is not
+// perturbed by the partner's parse-flip.
+//
+//   - a_partner.go is Modified: a valid body3 clone at head, a syntax error
+//     at base. It exists on both refs, so it is NOT a legitimate one-sided
+//     add/remove — only its parseability differs.
+//   - m_sibling.go is Modified with a byte-identical body3 clone on both
+//     refs, so every microstate including cross_duplication MUST score it
+//     identically and SBase must equal SHead.
+//
+// Without the symmetric-exclusion fix, a_partner.go is in the head corpus
+// but not the base corpus: at head m_sibling.go pays the class size (the
+// lower-path a_partner.go is the free original), at base it pays nothing
+// (no partner) — a spurious positive ΔS. Holding a_partner.go out of both
+// corpora restores SBase == SHead.
+func TestCheck_AsymmetricParseOfPartnerDoesNotPerturbSibling(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, crossCalibCorpus())
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	clone := body3("Sibling")                   // identical on both refs
+	brokenBase := "package p\nfunc Broken( {\n" // unparseable
+	validHead := body3("Partner")
+
+	fr := &fakeRunner{
+		t:        t,
+		resolved: map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff: []byte(
+			rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "a_partner.go", "") +
+				rawRecord("100644", "100644", "cccccccccccccccccccccccccccccccccccccccc", "cccccccccccccccccccccccccccccccccccccccc", "M", "m_sibling.go", ""),
+		),
+		numstatOut: []byte(
+			numRecord(3, 3, "a_partner.go", "") +
+				numRecord(0, 0, "m_sibling.go", ""),
+		),
+		blobs: map[string][]byte{
+			baseSHA + ":a_partner.go": []byte(brokenBase),
+			headSHA + ":a_partner.go": []byte(validHead),
+			baseSHA + ":m_sibling.go": []byte(clone),
+			headSHA + ":m_sibling.go": []byte(clone),
+		},
+		tree: map[string][]string{
+			baseSHA: {"a_partner.go", "m_sibling.go"},
+			headSHA: {"a_partner.go", "m_sibling.go"},
+		},
+	}
+
+	res, err := runCheck(t, dir, fr)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+
+	// a_partner.go fails to parse at base, so it is dropped from ΔS; only
+	// the unchanged sibling is scored.
+	var sib *thermo.FileDelta
+	for i := range res.Delta.Files {
+		if res.Delta.Files[i].Path == "m_sibling.go" {
+			sib = &res.Delta.Files[i]
+		}
+	}
+	if sib == nil {
+		t.Fatalf("m_sibling.go missing from ΔS; files = %+v", res.Delta.Files)
+	}
+	if sib.SBase != sib.SHead {
+		t.Errorf("unchanged sibling perturbed by partner's one-sided parse failure: SBase=%v SHead=%v (issue #68)",
+			sib.SBase, sib.SHead)
+	}
+}
+
+// TestCheck_CorpusFetchErrorDegradesNotFails pins buildCorpora's graceful
+// degradation: a FATAL error while building one ref's whole-tree corpus
+// (here a corpus-only base blob is unavailable) must NOT fail the check —
+// both corpora degrade to nil so cross_duplication contributes 0 symmetrically.
+// This is the mirror of TestCheck_FatalErrorMidLoopPropagates, where the same
+// error on a CHANGED file's blob (load-bearing for ΔS) DOES propagate.
+func TestCheck_CorpusFetchErrorDegradesNotFails(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, crossCalibCorpus())
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	fr := &fakeRunner{
+		t:          t,
+		resolved:   map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff:    []byte(rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "x.go", "")),
+		numstatOut: []byte(numRecord(5, 5, "x.go", "")),
+		blobs: map[string][]byte{
+			baseSHA + ":x.go":       []byte("package p\nfunc F(x int) int { return x }\n"),
+			headSHA + ":x.go":       []byte("package p\nfunc F(x int) int { return x + 1 }\n"),
+			headSHA + ":partner.go": []byte(body3("Partner")),
+		},
+		// partner.go is a corpus-only file (not in the diff). It is reachable
+		// at head but its BASE blob fetch fails fatally — so the base corpus
+		// build errors while the changed file x.go fetched fine.
+		catFileErr: map[string]error{
+			baseSHA + ":partner.go": fmt.Errorf("%w: simulated mid-fetch crash", gitx.ErrUnavailable),
+		},
+		tree: map[string][]string{
+			baseSHA: {"x.go", "partner.go"},
+			headSHA: {"x.go", "partner.go"},
+		},
+	}
+
+	res, err := runCheck(t, dir, fr)
+	if err != nil {
+		t.Fatalf("a corpus-build failure must degrade, not fail the check: %v", err)
+	}
+	if len(res.Delta.Files) != 1 || res.Delta.Files[0].Path != "x.go" {
+		t.Fatalf("x.go must still be scored after corpus degradation, got %+v", res.Delta.Files)
+	}
+}
+
+// TestCheck_CrossFileCloneInSubdir pins that cross-file clone detection works
+// across directory separators: corpus paths come from ls-tree (forward slash)
+// and analyzer File.Path comes from filepath.Rel+ToSlash, and the two must
+// agree so a clone pair in a subdir is found. sub/b.go picks up a clone of the
+// unchanged sub/a.go at head, so its SHead must exceed SBase.
+func TestCheck_CrossFileCloneInSubdir(t *testing.T) {
+	dir := t.TempDir()
+	files := crossCalibCorpus()
+	files["sub/a.go"] = body3("SubA")
+	files["sub/b.go"] = body3("SubB")
+	writeTree(t, dir, files)
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	fr := &fakeRunner{
+		t:          t,
+		resolved:   map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff:    []byte(rawRecord("100644", "100644", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "M", "sub/b.go", "")),
+		numstatOut: []byte(numRecord(5, 5, "sub/b.go", "")),
+		blobs: map[string][]byte{
+			baseSHA + ":sub/b.go": []byte("package p\nfunc SubB(x int) int { return x }\n"), // no clone at base
+			headSHA + ":sub/b.go": []byte(body3("SubB")),                                    // clone at head
+			baseSHA + ":sub/a.go": []byte(body3("SubA")),
+			headSHA + ":sub/a.go": []byte(body3("SubA")),
+		},
+		tree: map[string][]string{
+			baseSHA: {"sub/a.go", "sub/b.go"},
+			headSHA: {"sub/a.go", "sub/b.go"},
+		},
+	}
+
+	res, err := runCheck(t, dir, fr)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if len(res.Delta.Files) != 1 || res.Delta.Files[0].Path != "sub/b.go" {
+		t.Fatalf("want only sub/b.go scored, got %+v", res.Delta.Files)
+	}
+	fd := res.Delta.Files[0]
+	if fd.SHead <= fd.SBase {
+		t.Errorf("sub/b.go picked up a subdir cross-file clone at head: SHead=%v must exceed SBase=%v", fd.SHead, fd.SBase)
+	}
+}
+
+// TestCheck_RemovingCrossPartnerLowersDelta is the calibration-frame
+// differential: sub/b.go's OWN content is identical at base and head, but its
+// clone partner exists only in the BASE corpus. So the only thing that moves
+// ΔS is the base-side cross_duplication mass — normalized through the
+// head-frame CDF (see calibrateForCheck). Losing a partner must lower S
+// (SBase > SHead, ΔS < 0): the sign stays sane under a base-vs-head clone
+// density difference.
+func TestCheck_RemovingCrossPartnerLowersDelta(t *testing.T) {
+	dir := t.TempDir()
+	files := crossCalibCorpus()
+	files["a_partner.go"] = body3("Apartner")
+	files["f.go"] = body3("F")
+	writeTree(t, dir, files)
+
+	const baseSHA = "1111111111111111111111111111111111111111"
+	const headSHA = "2222222222222222222222222222222222222222"
+
+	clone := body3("F") // identical f.go content on both refs
+	fr := &fakeRunner{
+		t:          t,
+		resolved:   map[string]string{"base": baseSHA, "head": headSHA},
+		rawDiff:    []byte(rawRecord("100644", "100644", "cccccccccccccccccccccccccccccccccccccccc", "cccccccccccccccccccccccccccccccccccccccc", "M", "f.go", "")),
+		numstatOut: []byte(numRecord(0, 0, "f.go", "")),
+		blobs: map[string][]byte{
+			baseSHA + ":f.go":         []byte(clone),
+			headSHA + ":f.go":         []byte(clone),
+			baseSHA + ":a_partner.go": []byte(body3("Apartner")), // partner present at base only
+		},
+		tree: map[string][]string{
+			baseSHA: {"a_partner.go", "f.go"}, // base: f.go has a clone partner
+			headSHA: {"f.go"},                 // head: partner gone -> f.go alone
+		},
+	}
+
+	res, err := runCheck(t, dir, fr)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if len(res.Delta.Files) != 1 || res.Delta.Files[0].Path != "f.go" {
+		t.Fatalf("want only f.go scored, got %+v", res.Delta.Files)
+	}
+	fd := res.Delta.Files[0]
+	if fd.SBase <= fd.SHead {
+		t.Errorf("f.go lost its only cross partner at head: SBase=%v must exceed SHead=%v (ΔS<0)", fd.SBase, fd.SHead)
 	}
 }
 

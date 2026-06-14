@@ -129,15 +129,29 @@ Full design: [docs/crossfile.md](docs/crossfile.md).
 > artifacts — see [docs/crossfile.md](docs/crossfile.md#the-corpuscontext-seam-staged-coupling).
 > The v0.3 per-file import-count proxy stays meanwhile.
 
-## v0.6 — HTML heatmap & visualization
+## v0.6 — HTML heatmap & visualization ✅
+
+Released 2026-06-13. Tag `v0.6.0` on master.
 
 **Goal:** a heat map you wouldn't be ashamed to show the team.
 
-- A static HTML report `entrolint scan --html out/`.
-- A tree heatmap (squarified treemap) by T; drill-down to the per-microstate
-  breakdown (now including the v0.5 cross-file `duplication` signal).
-- A phase portrait: an `S(t)` graph over git history for a window (can be
-  precomputed in CI as an artifact).
+- ✅ A static, **self-contained** HTML report: `entrolint scan --html out/`
+  (one `index.html`, all CSS/JS/data inlined — offline, no external assets).
+- ✅ A tree heatmap (squarified treemap): tile **area = `S`**, **colour = `T`**,
+  files grouped into per-package regions, with file-name labels and a
+  click-through per-microstate breakdown (the v0.5 cross-file `cross_duplication`
+  signal included). Deterministic output, safe as a CI artifact.
+- ⏳ A phase portrait — an `S(t)` graph over git history — is **deferred to
+  v0.6.1**: it needs a multi-commit replay, a separate capability from the
+  single-scan treemap.
+
+Full design: [docs/heatmap.md](docs/heatmap.md).
+
+This release also folds in the post-v0.5 engine hardening merged to `dev`: a
+`cross_duplication` `ΔS`-symmetry fix under one-sided parse (#68), a markedly
+cheaper `check` cross-file pre-pass (#69), a test/doc/quality pass (#70), and a
+SARIF severity cap at `warning` while the formula is unstable (no blocking
+`error` until v1.0).
 
 ## v0.7 — The physics layer
 

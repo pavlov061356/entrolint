@@ -2,7 +2,6 @@ package microstate
 
 import (
 	"go/token"
-	"sort"
 )
 
 // CrossDuplication measures copy-pasted structure ACROSS files: the
@@ -59,25 +58,59 @@ type CloneClass struct {
 // stay structurally identical. Exposed for reporting (which files share
 // a block) and tests.
 func CloneIndex(files []File) map[uint64]CloneClass {
-	occ := make(map[uint64][]CloneOccurrence)
-	size := make(map[uint64]int)
+	// Two passes over the parsed ASTs. Pass 1 counts eligible subtrees per
+	// structural digest; pass 2 materializes a CloneOccurrence slice ONLY for
+	// digests that recur — the singleton subtrees, the vast majority of any
+	// tree, never cost an occurrence. This trades a second O(nodes) walk over
+	// the already-parsed ASTs for the peak memory of holding every unique
+	// subtree's occurrence on a large corpus.
+	count, size := countCloneCandidates(files)
+	out := make(map[uint64]CloneClass)
+	for h, n := range count {
+		if n >= 2 {
+			out[h] = CloneClass{Hash: h, Size: size[h]}
+		}
+	}
+	if len(out) > 0 { // skip the second walk entirely when there are no clones
+		collectCloneOccurrences(files, out)
+	}
+	return out
+}
+
+// countCloneCandidates counts eligible subtrees per structural digest and
+// records each digest's node count. size[hash] is last-write-wins, which is
+// exact: every subtree sharing a digest is structurally identical, so it has
+// the same inclusive node count by construction — every write stores the same
+// value, whatever the file or traversal order. Pass 1 of CloneIndex.
+func countCloneCandidates(files []File) (count, size map[uint64]int) {
+	count = make(map[uint64]int)
+	size = make(map[uint64]int)
 	for _, f := range files {
 		if f.AST == nil {
 			continue
 		}
 		for _, s := range dupSubtrees(f.AST) {
-			occ[s.hash] = append(occ[s.hash], CloneOccurrence{Path: f.Path, pos: s.pos, end: s.end})
+			count[s.hash]++
 			size[s.hash] = s.size
 		}
 	}
-	out := make(map[uint64]CloneClass, len(occ))
-	for h, os := range occ {
-		if len(os) < 2 {
+	return count, size
+}
+
+// collectCloneOccurrences appends every occurrence of a surviving (recurring)
+// digest to its class. Pass 2 of CloneIndex.
+func collectCloneOccurrences(files []File, classes map[uint64]CloneClass) {
+	for _, f := range files {
+		if f.AST == nil {
 			continue
 		}
-		out[h] = CloneClass{Hash: h, Size: size[h], Occ: os}
+		for _, s := range dupSubtrees(f.AST) {
+			if cc, ok := classes[s.hash]; ok {
+				cc.Occ = append(cc.Occ, CloneOccurrence{Path: f.Path, pos: s.pos, end: s.end})
+				classes[s.hash] = cc
+			}
+		}
 	}
-	return out
 }
 
 // CrossDupMassByFile computes, per file path, the cross-file duplication
@@ -91,9 +124,19 @@ func CloneIndex(files []File) map[uint64]CloneClass {
 // suppression then drops a charged inner clone sitting inside a charged
 // outer clone, mirroring Duplication's outermost-only rule.
 //
-// The deterministic original (computed independently at each ref) keeps
-// ΔS honest: extracting a shared helper removes a file from the class,
-// lowering that file's mass and yielding the intended negative ΔS.
+// The original is deterministic WITHIN one corpus (lowest path among the
+// files present), so extracting a shared helper removes a file from the
+// class, lowers that file's mass, and yields the intended negative ΔS.
+// Cross-ref ΔS honesty needs one more guarantee the microstate cannot give
+// alone: the same clone class must have the SAME member set at base and
+// head. A class member that exists on both refs but parses on only one
+// (a mid-edit syntax error, an unreadable blob) would be present in one
+// corpus and absent from the other, shifting the original and perturbing a
+// sibling's ΔS. `check` enforces the missing guarantee by holding such
+// files out of both corpora (pipeline.asymmetricParseExclusions, issue #68).
+// The only residual is a file that fails to parse at BOTH refs — it is in
+// no corpus, which is correct — or a blob that flakes on fetch, an I/O
+// anomaly outside this layer's control.
 func CrossDupMassByFile(files []File) map[string]float64 {
 	charges := crossFileCharges(CloneIndex(files))
 	out := make(map[string]float64, len(charges))
@@ -139,34 +182,19 @@ func distinctFilesAndOriginal(cc CloneClass) (files map[string]bool, original st
 	return files, original
 }
 
-// outermostMass charges one class size per cross-file clone class the
-// file participates in, after dropping occurrences nested inside an
-// already-counted larger clone — mirroring Duplication's outermost-only
-// rule so an inner clone is not double-counted under its enclosing clone.
-// Occurrences are ordered by (size desc, pos asc, end asc) — a total
-// order, since each AST node has a unique span within its file — so the
-// charge is independent of source layout and map iteration order. A class
-// appearing several non-nested times in one file is still charged once
-// (each non-original file pays its class size a single time).
+// outermostMass charges one class size per cross-file clone class the file
+// participates in, after dropping occurrences nested inside an already-counted
+// larger clone — the same outermost-only rule Duplication uses, via the shared
+// outermostSubtrees helper, so an inner clone is not double-counted under its
+// enclosing clone. The kept set is independent of source layout and map
+// iteration order (see outermostSubtrees). A class appearing several non-nested
+// times in one file is still charged once (each non-original file pays its
+// class size a single time).
 func outermostMass(cs []dupSub) float64 {
-	sort.Slice(cs, func(i, j int) bool {
-		switch {
-		case cs[i].size != cs[j].size:
-			return cs[i].size > cs[j].size
-		case cs[i].pos != cs[j].pos:
-			return cs[i].pos < cs[j].pos
-		default:
-			return cs[i].end < cs[j].end
-		}
-	})
-	kept := make([]dupSub, 0, len(cs))
-	charged := make(map[uint64]bool, len(cs))
+	kept := outermostSubtrees(cs)
+	charged := make(map[uint64]bool, len(kept))
 	mass := 0
-	for _, c := range cs {
-		if dupNested(c, kept) {
-			continue
-		}
-		kept = append(kept, c)
+	for _, c := range kept {
 		if !charged[c.hash] {
 			charged[c.hash] = true
 			mass += c.size
