@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>entrolint — entropy heatmap</title>
+<style>
+  :root { --bg:#0f1117; --panel:#1a1d27; --ink:#e6e8ee; --muted:#8b90a0; --line:#2a2e3a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:14px 18px; border-bottom:1px solid var(--line); display:flex;
+           align-items:baseline; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:.2px; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .legend { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+  .legend .bar { width:120px; height:10px; border-radius:5px;
+                 background:linear-gradient(90deg,hsl(120,70%,45%),hsl(60,70%,45%),hsl(0,70%,45%)); }
+  main { display:flex; gap:0; height:calc(100vh - 52px); }
+  .map { flex:1; min-width:0; padding:10px; }
+  svg { width:100%; height:100%; display:block; }
+  rect.cell { stroke:var(--bg); stroke-width:.75; cursor:pointer; transition:opacity .1s; }
+  rect.cell:hover { opacity:.78; }
+  rect.cell.sel { stroke:#fff; stroke-width:1.5; }
+  aside { width:320px; border-left:1px solid var(--line); background:var(--panel);
+          padding:16px; overflow-y:auto; }
+  aside .hint { color:var(--muted); }
+  aside h2 { font-size:13px; margin:0 0 2px; word-break:break-all; font-family:ui-monospace,monospace; }
+  aside .path { color:var(--muted); font-size:12px; word-break:break-all; margin-bottom:12px; }
+  .stat { display:flex; gap:18px; margin-bottom:14px; }
+  .stat div span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+  .stat div b { font-size:20px; font-weight:600; }
+  .ms { margin:7px 0; }
+  .ms .row { display:flex; justify-content:space-between; font-size:12px; margin-bottom:2px; }
+  .ms .row .name { color:var(--muted); }
+  .ms .track { height:7px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .ms .track i { display:block; height:100%; background:#5b8def; border-radius:4px; }
+  .ms.dom .track i { background:#e0823d; }
+</style>
+</head>
+<body>
+<header>
+  <h1>entrolint</h1>
+  <span class="sub">{{.FileCount}} files · area = entropy S · colour = temperature T</span>
+  <div class="legend"><span>cool</span><span class="bar"></span><span>hot</span></div>
+</header>
+<main>
+  <div class="map">
+    <svg viewBox="0 0 {{.Width}} {{.Height}}" preserveAspectRatio="xMidYMid meet">
+      {{range $i, $c := .Cells}}<rect class="cell" data-i="{{$i}}" x="{{$c.X}}" y="{{$c.Y}}" width="{{$c.W}}" height="{{$c.H}}" fill="{{$c.Fill}}"><title>{{$c.Path}}
+S={{printf "%.2f" $c.S}}  T={{printf "%.2f" $c.T}}</title></rect>
+      {{end}}
+    </svg>
+  </div>
+  <aside id="detail"><p class="hint">Click a tile to see its per-microstate breakdown.</p></aside>
+</main>
+<script>
+const CELLS = {{.CellsJSON}};
+const ORDER = [{{range $i, $m := .Microstates}}{{if $i}},{{end}}"{{$m}}"{{end}}];
+const svg = document.querySelector('svg');
+const detail = document.getElementById('detail');
+let selected = null;
+
+function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function show(i){
+  const c = CELLS[i];
+  if (selected !== null) { const p = svg.querySelector('rect[data-i="'+selected+'"]'); if (p) p.classList.remove('sel'); }
+  selected = i;
+  const cur = svg.querySelector('rect[data-i="'+i+'"]'); if (cur) cur.classList.add('sel');
+
+  const contrib = c.contributions || {};
+  let max = 0; for (const k in contrib) if (contrib[k] > max) max = contrib[k];
+  if (max <= 0) max = 1;
+
+  let rows = '';
+  for (const name of ORDER){
+    const v = contrib[name] || 0;
+    const dom = name === c.dominant ? ' dom' : '';
+    rows += '<div class="ms'+dom+'"><div class="row"><span class="name">'+esc(name)+'</span><span>'+v.toFixed(3)+'</span></div>'
+          + '<div class="track"><i style="width:'+(100*v/max).toFixed(1)+'%"></i></div></div>';
+  }
+  const file = c.path.split('/').pop();
+  detail.innerHTML =
+    '<h2>'+esc(file)+'</h2><div class="path">'+esc(c.path)+'</div>'
+    + '<div class="stat"><div><span>S</span><b>'+c.s.toFixed(2)+'</b></div>'
+    + '<div><span>T</span><b>'+c.t.toFixed(2)+'</b></div>'
+    + '<div><span>dominant</span><b style="font-size:13px">'+esc(c.dominant||'—')+'</b></div></div>'
+    + rows;
+}
+
+svg.addEventListener('click', e => {
+  const r = e.target.closest('rect.cell');
+  if (r) show(+r.dataset.i);
+});
+</script>
+</body>
+</html>

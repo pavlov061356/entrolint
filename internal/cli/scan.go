@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/pavlov061356/entrolint/internal/engine/cache"
@@ -23,6 +25,7 @@ var (
 	scanJSON        bool
 	scanRecalibrate bool
 	scanConfigPath  string
+	scanHTMLDir     string
 )
 
 var scanCmd = &cobra.Command{
@@ -64,6 +67,13 @@ func runScan(cmd *cobra.Command, root string) error {
 		return err
 	}
 
+	// The HTML heatmap is a whole-repo artifact written to a directory, so it
+	// renders every file (not just --top, a terminal-table convenience) and
+	// short-circuits the stdout formats.
+	if scanHTMLDir != "" {
+		return writeHTMLReport(out, scanHTMLDir, result.Files)
+	}
+
 	files := result.Files
 	if scanTop > 0 && scanTop < len(files) {
 		files = files[:scanTop]
@@ -75,6 +85,24 @@ func runScan(cmd *cobra.Command, root string) error {
 	}
 	_, err = out.Write(payload)
 	return err
+}
+
+// writeHTMLReport renders the self-contained heatmap and writes it to
+// <dir>/index.html, creating the directory if needed, then prints the path.
+func writeHTMLReport(out io.Writer, dir string, files []pipeline.FileScore) error {
+	html, err := report.ScanHTML(files)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("create html output dir: %w", err)
+	}
+	path := filepath.Join(dir, "index.html")
+	if err := os.WriteFile(path, html, 0o644); err != nil { // #nosec G306 -- a report artifact, no secrets
+		return fmt.Errorf("write html report: %w", err)
+	}
+	fmt.Fprintf(out, "wrote heatmap to %s\n", path)
+	return nil
 }
 
 // renderScan formats scan scores for the chosen output format. All
@@ -96,4 +124,5 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanJSON, "json", false, "machine-readable JSON output (deprecated: use --format=json)")
 	scanCmd.Flags().BoolVar(&scanRecalibrate, "recalibrate", false, "ignore cache and refit calibration")
 	scanCmd.Flags().StringVar(&scanConfigPath, "config", "", "path to .entrolint.yaml (default: <root>/.entrolint.yaml)")
+	scanCmd.Flags().StringVar(&scanHTMLDir, "html", "", "write a self-contained HTML heatmap to this directory (as index.html)")
 }
