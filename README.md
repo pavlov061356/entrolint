@@ -24,6 +24,8 @@ growing unnoticed.
 Ordinary linters catch individual style violations. `entrolint` looks at the
 whole picture: it gives you a single number — entropy — that reflects how hard
 the code will be to maintain, and shows how that number changes with every change.
+For a deeper positioning against traditional linters and quality dashboards, see
+[docs/why-entrolint.md](docs/why-entrolint.md).
 
 ## Two modes
 
@@ -85,6 +87,14 @@ Both commands take `--format`:
 `scan --html <dir>` is separate from `--format`: it writes a self-contained HTML
 heat map to `<dir>/index.html` (a squarified treemap with a per-microstate
 drill-down, no external assets), rendering the whole repo rather than the table.
+
+## Diagnostic workflow
+
+For a maintainability review, run `scan --html` first, inspect the largest and
+hottest tiles, then turn the findings into a short engineering report rather
+than a raw metric dump. The reusable structure lives in
+[docs/diagnostic-report-template.md](docs/diagnostic-report-template.md), with a
+set of filled examples in [docs/examples](docs/examples/README.md).
 
 ## Configuration
 
@@ -174,6 +184,17 @@ Churn (how often a file changes) feeds the **temperature** T = S · ξ(churn) �
 hottest spots are not merely complex but also frequently rewritten.
 
 Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
+
+More background:
+
+- [Why entrolint](docs/why-entrolint.md) — where it fits next to ordinary
+  linters and quality dashboards.
+- [Diagnostic report template](docs/diagnostic-report-template.md) — a reusable
+  structure for heat-map walkthroughs and maintainability reviews.
+- [Diagnostic examples](docs/examples/README.md) — the template filled from
+  `entrolint scan` on this repository and selected public Go projects.
+- [Formula](docs/formula.md) — the current entropy math.
+- [Scaling classes](docs/scaling.md) — the predictive PR-level signal.
 
 ## Terminology
 
