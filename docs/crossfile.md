@@ -208,7 +208,7 @@ scope, not a rewrite.
   worry, cross-file clone mass is **not** heavier-tailed than intra-file mass — it
   is consistently smaller — so an equal weight does not let it dominate `ΔS`, and
   the flagged cross-file clones are genuine, recognizable duplication (high
-  precision). The weight may be re-tuned under v0.8's learned calibration.
+  precision). The weight may be re-tuned by the pre-1.0 calibration pass.
 - **De-duplication as a reward.** When a PR extracts a shared helper (the intended
   reward), the canonical first copy may shift files between base and head. Confirm
   the deterministic `(path, pos)` ordering + symmetric base/head computation

@@ -339,7 +339,7 @@ func applyScalingBonus(d thermo.Delta, bonus float64) thermo.Delta {
 
 // calibrateForCheck fits (or loads from cache) the engine against the
 // working tree at Root. Calibration uses the same logic as Scan so a
-// single `.entrolint-cache.json` is shared between commands.
+// single `.entrolint.cache.json` is shared between commands.
 //
 // Calibration frame for cross_duplication: the lognormal (μ,σ) is fit on the
 // HEAD working-tree corpus, and BOTH the base and head blob-corpus masses are

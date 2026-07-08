@@ -126,6 +126,15 @@ delta_s_max:       0.05   # ΔS_density threshold for check
 churn_since_days:  90     # window for the churn factor (lives in T, not S)
 ```
 
+### Calibration cache
+
+`scan`, `check`, and `history` share `.entrolint.cache.json` at the repository
+root. The cache stores the fitted lognormal parameters, `k`, `alpha`, and a
+formula/config signature. It is reused only when the active microstates, weights,
+normalization floor, alpha, and formula version still match; missing, malformed,
+old, or mismatched caches are refit automatically. Use `--recalibrate` on the
+command to force a fresh fit.
+
 ## Using entrolint in CI
 
 entrolint ships a composite GitHub Action that posts a sticky PR comment with

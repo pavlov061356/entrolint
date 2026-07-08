@@ -180,7 +180,7 @@ Full design: [docs/phase-portrait.md](docs/phase-portrait.md).
   down.
 - Free energy `F = S − α·V` — the `check` threshold adapts to the repo's pace.
 
-## v0.8 — Experimental microstates & weight calibration
+## v0.8 — Experimental microstates
 
 **Goal:** test subtler signals; keep only those that survive on dogfooding data.
 
@@ -188,8 +188,8 @@ Full design: [docs/phase-portrait.md](docs/phase-portrait.md).
   AST-subtree shapes), `comment_anomaly` (comment-to-code ratio deviation),
   `todo_density` (`TODO`/`FIXME` frequency, age-weighted) — behind a
   `--experimental` flag, off in `S` unless enabled in `.entrolint.yaml`.
-- Weight calibration: learn the formula weights from real bug-fix history
-  (interpretable models only; hybrid global + per-repo).
+- Weight calibration is not a post-freeze feature; it is part of the v1.0 gate
+  below because changing weights changes the public `S` formula.
 
 ## v1.0 — A stable formula
 
@@ -198,6 +198,9 @@ change; from 1.0 on — only per semver.
 
 - A calibration corpus from public Go repositories (entrolint analyzes them).
   The author forms the regression ground truth, not an external community.
+- Weight calibration: learn the formula weights from real bug-fix history, or
+  explicitly keep the current defaults and document why. This must happen before
+  the formula freeze.
 - The `docs/formula.md` document — final math, weight justification, calibration
   protocol.
 - The `docs/scaling-classes.md` document — a catalog of O-classes with examples.
