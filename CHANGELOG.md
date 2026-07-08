@@ -8,6 +8,12 @@ versions.
 
 ## [Unreleased]
 
+### Fixed
+
+- Calibration cache now records the formula/config signature (active
+  microstates, weights, normalization floor, and alpha) and recalibrates when
+  those inputs change instead of reusing a stale `K`.
+
 ## [0.6.0] — 2026-06-14
 
 ### Added
@@ -32,7 +38,7 @@ versions.
 - The calibration cache no longer forces a full recalibration on every run of a
   repo where a microstate has no signal (e.g. `cross_duplication` on a
   clone-free repo): a present-but-degenerate fit now counts as cached,
-  consistent with the "calibrate once, manual `recalibrate`" contract. (#70)
+  consistent with the "calibrate once, manual `--recalibrate`" contract. (#70)
 - SARIF severity is capped at `warning` until v1.0. An admittedly-unstable
   metric must not raise `error`, which GitHub Code Scanning treats as a
   **blocking** check failure — contradicting entrolint's advisory stance. A hard

@@ -79,8 +79,8 @@ A "touched interface method" in `implementor_scan` is determined by an
 `*types.Interface` in the graph.
 
 All thresholds (`8`, `80%`, `50%`, `5`, `2`) are starting assumptions. In v0.2.x
-they are hardcoded; in v0.8 they are calibrated together with the microstate
-weights.
+they are hardcoded; before v1.0 they are either calibrated together with the
+microstate weights or explicitly kept as documented starting assumptions.
 
 ## Per-change vs aggregate
 
@@ -243,7 +243,7 @@ So as not to pretend everything is smooth:
 2. **The architecture size is computed on base.** If a PR simultaneously
    increases the number of implementations and touches half of the old ones,
    `size_before` is the old count. This understates the `O(k)` complexity. Not
-   critical for v0.2; accounted for in v0.8 calibration.
+   critical for v0.2; accounted for in the pre-1.0 calibration pass.
 3. **`shotgun` without types yields false positives on formatting changes.**
    Workaround: gofumpt-only diffs are filtered out before the heuristic via a
    simple "are there changes outside whitespace" check.
@@ -251,9 +251,9 @@ So as not to pretend everything is smooth:
    checking can take seconds on large repositories. v0.2.0 accepts this; v0.3+ —
    parallel package loading and a `references(symbol)` cache in
    `.entrolint.cache.json`.
-5. **The default thresholds (50%, 80%, ...) are unjustified.** In v0.8 they are
-   trained on a corpus together with the microstate weights; until then — starting
-   assumptions, pinned in this documentation.
+5. **The default thresholds (50%, 80%, ...) are unjustified.** Before v1.0 they
+   are trained on a corpus together with the microstate weights, or explicitly
+   kept as starting assumptions pinned in this documentation.
 6. **`implementor_scan` sees only the interfaces of its own module.**
    `packages.Load("./...")` returns only the root module's packages; stdlib and
    external dependencies are reachable via `pkg.Imports` but don't enter the
@@ -299,10 +299,11 @@ So as not to pretend everything is smooth:
     `[]bool` — the latter are not considered state-multiplying (semantically an
     option, not a flag).
 
-## What changes in v0.8 ("Weight calibration")
+## Pre-1.0 heuristic calibration
 
-In v0.8 the parameters of the scaling heuristics stop being fixed constants and
-become part of a trained model.
+Before v1.0 the parameters of the scaling heuristics must be resolved as part of
+the public formula contract: either calibrated on a public corpus or explicitly
+kept as documented constants.
 
 - **The regression target** is future revert commits in files that received
   `scaling_class ≥ O(k)` in a passing PR. The hypothesis: "a PR with a high

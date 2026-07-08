@@ -12,8 +12,10 @@ the next.
 - Structural microstates: `cyclomatic`, `nesting`, `length` (v0.1) +
   `coupling`, `duplication` (v0.3) + `cross_duplication` (v0.5) — see
   [Microstates](#microstates). `churn` feeds only the temperature `T`, not `S`.
-- The weights `wᵢ` are hardcoded defaults in the binary. In v0.8 they are
-  learned on a public corpus (see [What changes in v0.8](#what-changes-in-v08-weight-calibration)).
+- The weights `wᵢ` are hardcoded defaults in the binary. Before v1.0 they are
+  either calibrated on a public corpus and frozen, or the current defaults are
+  explicitly kept and documented as the v1.0 contract (see
+  [Pre-1.0 weight calibration](#pre-10-weight-calibration)).
 
 ## Aggregation levels
 
@@ -55,8 +57,8 @@ S_file = k · Σᵢ wᵢ · ln(1 + mᵢ_norm)
 In statistical physics the entropy of independent subsystems adds up. Here we
 **postulate** that `cyclomatic` is independent of `nesting`, etc. — a
 simplification, but an honest one. In reality the microstates correlate (see
-[Known simplifications](#known-simplifications-v01)); in v0.8 the correlation is accounted for via
-regression weights.
+[Known simplifications](#known-simplifications-v01)); the pre-1.0 calibration
+gate accounts for the correlation via explicit weight selection.
 
 ## Microstates
 
@@ -112,14 +114,15 @@ For each microstate `i`:
 
    The 30th percentile maps to 0, the 100th to 1.
 
-4. The parameters `(μᵢ, σᵢ)` for all `i` are cached in
-   `.entrolint.cache.json`. A manual recompute is `entrolint recalibrate`.
+4. The parameters `(μᵢ, σᵢ)` for all active microstates are cached in
+   `.entrolint.cache.json`. A manual recompute is `--recalibrate` on the command
+   being run (`scan`, `check`, or `history`).
 
 ### A known weakness
 
 The self-calibration is circular — a uniformly clean or uniformly dirty repo
-flattens the signal. We accept this as a v0.1 limitation; v0.8 moves to a trained
-baseline corpus.
+flattens the signal. We accept this as a pre-1.0 limitation; the v1.0 freeze
+requires an explicit calibration decision against a public baseline corpus.
 
 ### Why lognormal specifically
 
@@ -142,8 +145,10 @@ After this the median file of the repo gets `S ≈ 1.0`. Then the phrase "S > 2 
 hot" literally means "twice as dirty as the median", and the units don't need
 explaining.
 
-`k` is cached in `.entrolint.cache.json` together with `(μᵢ, σᵢ)`. It is
-recomputed only by the `entrolint recalibrate` command.
+`k` is cached in `.entrolint.cache.json` together with `(μᵢ, σᵢ)` and the cache
+signature (`formula_version`, active microstates, weights, normalization floor,
+and `alpha`). It is recomputed when the cache is missing, malformed, stale,
+signature-mismatched, or when the command is run with `--recalibrate`.
 
 ## Default weights
 
@@ -167,7 +172,7 @@ is consistently *smaller* — so a weight equal to `duplication`'s does not let 
 dominate `ΔS` (and the per-microstate lognormal CDF absorbs the distribution
 either way). The cross-file clones flagged on real codebases are genuine,
 recognizable duplication, not coincidental structural matches. The weight may
-still be re-tuned under v0.8's learned calibration.
+still be re-tuned by the pre-1.0 calibration pass.
 
 ## Temperature `T_file`
 
@@ -222,30 +227,31 @@ So as not to pretend everything is smooth:
 
 1. **The microstates are not independent.** `cyclomatic` correlates with
    `length`, `nesting` with `cyclomatic`. An additive sum double-counts.
-   PCA decorrelation or regression-fitted weights are v0.8.
+   PCA decorrelation or regression-fitted weights are part of the pre-1.0
+   calibration gate.
 2. **The self-calibration is circular.** A uniformly clean or uniformly dirty
-   repo flattens the signal. Moving to a trained corpus is v0.8.
+   repo flattens the signal. Moving to a trained corpus is a v1.0 freeze
+   decision.
 3. **The `+1` in `ln(1+x)`** at large weights blurs the difference between
    "0 problems" and "1 problem". It could be replaced with `ln(c+x)` for a
    larger `c`, but that adds another knob — deferred.
 4. **The `churn` window is fixed at 90 days.** In projects with differing
    release cadences this works worse; auto-tuning to release cadence is v1.0.
 
-## What changes in v0.8 ("Weight calibration")
+## Pre-1.0 weight calibration
 
-In v0.8 the weights `wᵢ` and the shape of the normalization stop being fixed
-constants and become a trained model.
+Before v1.0 the weights `wᵢ` must be resolved as part of the public formula
+contract. The decision is explicit: either train and freeze new defaults, or keep
+the current defaults and document why they are stable enough for 1.x.
 
 - **The regression target** is future bug-fix commits on the file within a
   +90-day window (identified by regex-parsing commit messages: `fix:`, `bug:`,
   `hotfix:`). A secondary validation is PR revision count.
-- **The default weights** are trained on a public corpus of Go repositories and
-  compiled into the binary.
-- **An optional per-repo fine-tune** — `entrolint train --local`, with the
-  result written to `.entrolint.cache.json`.
-- **The model family** starts with linear regression (the weights map directly
-  onto `wᵢ`); then a small GBM with SHAP explanations for cross-microstate
-  interactions. No black boxes — interpretability is load-bearing for the tool.
+- **The candidate weights** are evaluated on a public corpus of Go repositories
+  and compared against the current defaults.
+- **The model family** starts with interpretable linear weights that map directly
+  onto `wᵢ`. More complex models are out of scope for the v1.0 contract unless
+  they can be explained without hiding the signal.
 
 The architectural consequence for the v0.1 code: weights must be loaded from the
 config as data, not used as magic numbers. Then moving to a trained model is a

@@ -70,6 +70,10 @@ func structuralMicrostates() []microstate.Microstate {
 	}
 }
 
+// formulaVersion identifies the public S/T/ΔS contract. Bump it when the
+// calibration math changes but the cache schema itself can still be parsed.
+const formulaVersion = 1
+
 // Scan runs the full pipeline for `opts` and returns ranked scores.
 func Scan(opts ScanOptions) (ScanResult, error) {
 	ms := structuralMicrostates()
@@ -117,8 +121,9 @@ func attachCorpus(files []microstate.File) {
 }
 
 func resolveEngine(opts ScanOptions, ms []microstate.Microstate, files []microstate.File) *thermo.Engine {
+	sig := cacheSignature(ms, opts.Config)
 	if !opts.Recalibrate && opts.CachePath != "" {
-		if state, err := cache.Load(opts.CachePath); err == nil && state.HasAll(microstateNames(ms)) {
+		if state, err := cache.Load(opts.CachePath); err == nil && state.ValidFor(sig) {
 			return thermo.NewEngine(ms, opts.Config.Weights, state.K, state.Alpha, state.Microstates)
 		} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			// Malformed cache: fall through to fresh calibration.
@@ -129,9 +134,24 @@ func resolveEngine(opts ScanOptions, ms []microstate.Microstate, files []microst
 	}
 	engine := thermo.Calibrate(ms, opts.Config.Weights, files)
 	if opts.CachePath != "" {
-		_ = cache.Save(opts.CachePath, cache.StateFromEngine(engine))
+		_ = cache.Save(opts.CachePath, cache.StateFromEngine(engine, sig))
 	}
 	return engine
+}
+
+func cacheSignature(ms []microstate.Microstate, cfg config.Config) cache.Signature {
+	names := microstateNames(ms)
+	weights := make(map[string]float64, len(names))
+	for _, name := range names {
+		weights[name] = cfg.Weights[name]
+	}
+	return cache.Signature{
+		FormulaVersion:     formulaVersion,
+		Microstates:        names,
+		Weights:            weights,
+		NormalizationFloor: thermo.NormalizationFloor,
+		Alpha:              thermo.DefaultAlpha,
+	}
 }
 
 func microstateNames(ms []microstate.Microstate) []string {
