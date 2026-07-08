@@ -131,7 +131,7 @@ Full design: [docs/crossfile.md](docs/crossfile.md).
 
 ## v0.6 — HTML heatmap & visualization ✅
 
-Released 2026-06-13. Tag `v0.6.0` on master.
+Released 2026-06-14. Tag `v0.6.0` on master.
 
 **Goal:** a heat map you wouldn't be ashamed to show the team.
 
@@ -152,6 +152,22 @@ This release also folds in the post-v0.5 engine hardening merged to `dev`: a
 cheaper `check` cross-file pre-pass (#69), a test/doc/quality pass (#70), and a
 SARIF severity cap at `warning` while the formula is unstable (no blocking
 `error` until v1.0).
+
+## v0.6.1 — Phase portrait data layer
+
+Released 2026-07-08. Tag `v0.6.1` on master.
+
+**Goal:** make entropy visible over time, not only at one scan point or one PR.
+
+- ✅ `entrolint history [ref] --limit N` samples recent commits without checking
+  them out, scores each tree in one calibration frame, and emits total
+  repository entropy `S(t)`.
+- ✅ Table and JSON output for the first phase-portrait data layer.
+- ✅ Mainline history by default via `--first-parent=true`.
+- ✅ `history --html out/` writes a self-contained SVG/HTML phase portrait.
+- ⏭ Trend annotations and heat-map links for selected commits are deferred.
+
+Full design: [docs/phase-portrait.md](docs/phase-portrait.md).
 
 ## v0.7 — The physics layer
 

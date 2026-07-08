@@ -104,6 +104,31 @@ func ScanJSON(files []pipeline.FileScore) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
+// HistoryTable renders total entropy over recent commits as an S(t) table.
+func HistoryTable(res pipeline.HistoryResult) string {
+	var b strings.Builder
+	tw := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SHA\tDATE\tFILES\tS\tSUBJECT")
+	for _, p := range res.Points {
+		date := p.CommitTime
+		if len(date) >= len("2006-01-02") {
+			date = date[:len("2006-01-02")]
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%.2f\t%s\n", p.ShortSHA, date, p.FileCount, p.S, p.Subject)
+	}
+	_ = tw.Flush()
+	return b.String()
+}
+
+// HistoryJSON renders the S(t) result as indented JSON with a trailing newline.
+func HistoryJSON(res pipeline.HistoryResult) ([]byte, error) {
+	b, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
+}
+
 // nonO1Hits flattens the non-O(1) detector hits across a scaling result,
 // preserving file/hit order. Shared by the table and Markdown renderers
 // so the "why is the class elevated" iteration lives in exactly one

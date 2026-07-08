@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>entrolint — phase portrait</title>
+<style>
+  :root { --bg:#0f1117; --panel:#191d26; --ink:#e8ecf3; --muted:#98a0ae; --line:#2b3240; --accent:#6aa6ff; --warm:#f2a65a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:15px 18px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  h1 { font-size:15px; margin:0; font-weight:650; letter-spacing:0; }
+  .sub { color:var(--muted); font-size:12px; }
+  main { padding:16px; display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .chart, .table-wrap { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  .chart { padding:14px; min-height:360px; }
+  svg { width:100%; height:auto; display:block; }
+  .axis { stroke:#596273; stroke-width:1.2; }
+  .grid { stroke:#283141; stroke-width:1; }
+  .tick { fill:var(--muted); font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .x-tick { text-anchor:middle; }
+  .axis-name { fill:var(--muted); font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:0; }
+  .legend-text { fill:var(--muted); font-size:12px; }
+  .series { fill:none; stroke:var(--accent); stroke-width:3; stroke-linejoin:round; stroke-linecap:round; }
+  .point { fill:var(--warm); stroke:var(--bg); stroke-width:2; }
+  .point:hover { stroke:#fff; stroke-width:3; }
+  .empty { fill:var(--muted); font-size:18px; text-anchor:middle; }
+  .table-wrap { overflow:auto; }
+  table { width:100%; border-collapse:collapse; min-width:640px; }
+  th, td { padding:9px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0; }
+  td.sha { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  td.subject { white-space:normal; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<header>
+  <h1>entrolint phase portrait</h1>
+  <span class="sub">ref {{.Ref}} · {{.PointCount}} commits · max S {{.MaxS}}</span>
+</header>
+<main>
+  <section class="chart" aria-label="Total entropy over time">
+    <svg viewBox="0 0 {{.Width}} {{.Height}}" preserveAspectRatio="xMidYMid meet" role="img">
+      <title>Total entropy S over recent git history</title>
+      <text class="axis-name" x="{{.YLabelX}}" y="{{.YLabelY}}">total S</text>
+      <g transform="translate({{.LegendX}} {{.LegendY}})">
+        <line class="series" x1="0" y1="0" x2="34" y2="0"></line>
+        <circle class="point" cx="17" cy="0" r="5.5"></circle>
+        <text class="legend-text" x="48" y="4">line = total S · dot = commit</text>
+      </g>
+      {{range .YTicks}}<line class="grid" x1="{{$.PlotLeft}}" y1="{{.Y}}" x2="{{$.PlotRight}}" y2="{{.Y}}"></line><text class="tick" x="18" y="{{.Y}}" dy="4">{{.Label}}</text>{{end}}
+      {{range .XTicks}}<line class="grid" x1="{{.X}}" y1="{{$.PlotBottom}}" x2="{{.X}}" y2="{{$.PlotTop}}"></line><text class="tick" style="text-anchor:{{.Anchor}}" x="{{.X}}" y="{{$.XTickY}}">{{.Label}}</text>{{end}}
+      <line class="axis" x1="{{.PlotLeft}}" y1="{{.PlotBottom}}" x2="{{.PlotRight}}" y2="{{.PlotBottom}}"></line>
+      <line class="axis" x1="{{.PlotLeft}}" y1="{{.PlotTop}}" x2="{{.PlotLeft}}" y2="{{.PlotBottom}}"></line>
+      <text class="axis-name x-tick" x="{{.XLabelX}}" y="{{.XLabelY}}">commit date</text>
+      {{if .Points}}<polyline class="series" points="{{.Polyline}}"></polyline>{{else}}<text class="empty" x="{{.CenterX}}" y="{{.CenterY}}">No commits sampled</text>{{end}}
+      {{range .Points}}<circle class="point" cx="{{.X}}" cy="{{.Y}}" r="5.5"><title>{{.Title}}</title></circle>{{end}}
+    </svg>
+  </section>
+  <section class="table-wrap" aria-label="Commit samples">
+    <table>
+      <thead><tr><th>SHA</th><th>Date</th><th>Files</th><th>S</th><th>Subject</th></tr></thead>
+      <tbody>
+      {{range .Points}}<tr><td class="sha">{{.ShortSHA}}</td><td>{{.Date}}</td><td class="num">{{.FileCount}}</td><td class="num">{{printf "%.2f" .S}}</td><td class="subject">{{.Subject}}</td></tr>{{end}}
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

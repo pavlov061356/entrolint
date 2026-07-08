@@ -24,8 +24,10 @@ growing unnoticed.
 Ordinary linters catch individual style violations. `entrolint` looks at the
 whole picture: it gives you a single number — entropy — that reflects how hard
 the code will be to maintain, and shows how that number changes with every change.
+For a deeper positioning against traditional linters and quality dashboards, see
+[docs/why-entrolint.md](docs/why-entrolint.md).
 
-## Two modes
+## Three commands
 
 ### `scan` — a heat map of the whole repo
 
@@ -42,6 +44,14 @@ disorder or lower it. It plugs into CI and blocks PRs that worsen maintainabilit
 beyond a configured threshold.
 
 > Positive ΔS = the code became harder to maintain.
+
+### `history` — phase portrait data
+
+Samples recent commits without checking them out and computes total repository
+entropy `S` at each point. This is the data layer for the phase portrait:
+`entrolint history --limit 30` shows whether the system is heating up or cooling
+down over time; `entrolint history --html out/` writes a self-contained SVG/HTML
+chart. See [docs/phase-portrait.md](docs/phase-portrait.md).
 
 ## Installation
 
@@ -63,6 +73,10 @@ entrolint scan --html out/
 # PR gate: compare a feature branch against dev, fail if the threshold is exceeded.
 entrolint check --base dev --head HEAD
 
+# Phase portrait data: total entropy over recent mainline commits.
+entrolint history --limit 30
+entrolint history --html entropy-history/
+
 # Machine-readable report for CI / a PR bot:
 entrolint check --base origin/dev --head HEAD --format json > delta.json
 ```
@@ -73,18 +87,27 @@ when `delta_s_max` is exceeded.
 
 ### Output formats
 
-Both commands take `--format`:
+Commands that render to stdout take `--format`:
 
-| Command | Formats                               | Notable use                    |
-| ------- | ------------------------------------- | ------------------------------ |
-| `scan`  | `table` (default), `json`, `sarif`    | `sarif` → GitHub Code Scanning |
-| `check` | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
+| Command   | Formats                               | Notable use                    |
+| --------- | ------------------------------------- | ------------------------------ |
+| `scan`    | `table` (default), `json`, `sarif`    | `sarif` → GitHub Code Scanning |
+| `check`   | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
+| `history` | `table` (default), `json`             | `json` → phase-portrait data   |
 
 (`--json` is a deprecated alias for `--format json`.)
 
 `scan --html <dir>` is separate from `--format`: it writes a self-contained HTML
 heat map to `<dir>/index.html` (a squarified treemap with a per-microstate
 drill-down, no external assets), rendering the whole repo rather than the table.
+
+## Diagnostic workflow
+
+For a maintainability review, run `scan --html` first, inspect the largest and
+hottest tiles, then turn the findings into a short engineering report rather
+than a raw metric dump. The reusable structure lives in
+[docs/diagnostic-report-template.md](docs/diagnostic-report-template.md), with a
+set of filled examples in [docs/examples](docs/examples/README.md).
 
 ## Configuration
 
@@ -138,7 +161,7 @@ jobs:
 
 | Input          | Default           | Description                                                        |
 | -------------- | ----------------- | ------------------------------------------------------------------ |
-| `version`      | `latest`          | `latest`, a tag (`v0.6.0`), or `source` (build from the checkout). |
+| `version`      | `latest`          | `latest`, a tag (`v0.6.1`), or `source` (build from the checkout). |
 | `base`         | PR base branch    | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
 | `head`         | `HEAD`            | Head ref.                                                          |
 | `config`       | `.entrolint.yaml` | Path to the config; defaults to `.entrolint.yaml` at the root.     |
@@ -175,6 +198,19 @@ hottest spots are not merely complex but also frequently rewritten.
 
 Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
+More background:
+
+- [Why entrolint](docs/why-entrolint.md) — where it fits next to ordinary
+  linters and quality dashboards.
+- [Diagnostic report template](docs/diagnostic-report-template.md) — a reusable
+  structure for heat-map walkthroughs and maintainability reviews.
+- [Diagnostic examples](docs/examples/README.md) — the template filled from
+  `entrolint scan` on this repository and selected public Go projects.
+- [Phase portrait](docs/phase-portrait.md) — total entropy `S` over recent git
+  history.
+- [Formula](docs/formula.md) — the current entropy math.
+- [Scaling classes](docs/scaling.md) — the predictive PR-level signal.
+
 ## Terminology
 
 - **Entropy (S)** — a measure of disorder and maintenance difficulty. Higher = worse.
@@ -185,20 +221,20 @@ Upcoming microstates and milestones are tracked in the [ROADMAP](ROADMAP.md).
 
 ## Status
 
-📦 **v0.6** (latest release) — visualization: an HTML **heat map** you can show
-the team. `entrolint scan --html out/` writes a self-contained squarified treemap
-of the repo (tile area = entropy `S`, colour = temperature `T`), grouped by
-package, with file labels and a click-through per-microstate breakdown. The same
-release hardens the v0.5 engine — a `ΔS`-symmetry fix and a markedly cheaper
-`check` cross-file pre-pass. Builds on the v0.5 `cross_duplication` microstate
-(structurally-identical code copy-pasted **across** files), the v0.4 CI
-integration (the drop-in `entrolint-check` GitHub Action — ΔS / scaling class /
-hotspots as a PR comment + SARIF to Code Scanning, plus `--format markdown|sarif`),
-the v0.3 structural microstates (`coupling`, `duplication`), and the v0.2
-predictive scaling class (O-class detectors `shotgun`, `implementor_scan`,
-`switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
-`scaling_class` line next to `ΔS`). The formula, weights, and threshold are
-considered unstable until v1.0 — `S` values may shift between releases.
+📦 **v0.6.1** (latest release) — phase portrait: `entrolint history` samples
+recent git commits and emits total repository entropy `S(t)` as table, JSON, or
+a self-contained SVG/HTML chart. The X axis is a real commit-time scale, so
+periods without commits are shown as gaps rather than synthetic points.
+
+v0.6 shipped the HTML **heat map**: `entrolint scan --html out/` writes a
+self-contained squarified treemap of the repo (tile area = entropy `S`, colour =
+temperature `T`), grouped by package, with file labels and a click-through
+per-microstate breakdown. The same release hardens the v0.5 engine — a
+`ΔS`-symmetry fix and a markedly cheaper `check` cross-file pre-pass. Builds on
+the v0.5 `cross_duplication` microstate, the v0.4 CI integration, the v0.3
+structural microstates (`coupling`, `duplication`), and the v0.2 predictive
+scaling class. The formula, weights, and threshold are considered unstable until
+v1.0 — `S` values may shift between releases.
 
 ## Contributing
 
