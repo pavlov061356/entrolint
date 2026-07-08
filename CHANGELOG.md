@@ -8,6 +8,31 @@ versions.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-07-08
+
+### Added
+
+- Phase portrait: `entrolint history [ref] --limit N` samples recent commits
+  without checking them out and emits total repository entropy `S(t)` as table
+  or JSON. The command scores historical git trees through `log` / `ls-tree` /
+  `cat-file` in a single current-tree calibration frame, so points are
+  comparable across the timeline.
+- `entrolint history --html <dir>` writes a self-contained SVG/HTML phase
+  portrait to `<dir>/index.html`. The X axis is a real commit-time scale:
+  periods without commits appear as horizontal gaps rather than synthetic
+  no-op points.
+- Product proof pack documentation: `docs/why-entrolint.md`, the maintainability
+  diagnostic report template, and filled diagnostic examples for entrolint,
+  Cobra, Gin, and Chi.
+
+### Changed
+
+- README and ROADMAP now document the three-command product shape:
+  `scan`, `check`, and `history`.
+- Dependencies and CI maintenance: `actions/checkout` v6 → v7,
+  `github.com/testcontainers/testcontainers-go` 0.42 → 0.43, and
+  `golang.org/x/tools` 0.46 → 0.47.
+
 ## [0.6.0] — 2026-06-14
 
 ### Added
@@ -334,7 +359,8 @@ left in place rather than re-pointed.
   and `check`.
 - `docs/formula.md` — canonical formula specification.
 
-[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/pavlov061356/entrolint/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/pavlov061356/entrolint/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/pavlov061356/entrolint/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/pavlov061356/entrolint/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/pavlov061356/entrolint/compare/v0.4.3...v0.5.0

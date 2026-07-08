@@ -155,6 +155,8 @@ SARIF severity cap at `warning` while the formula is unstable (no blocking
 
 ## v0.6.1 — Phase portrait data layer
 
+Released 2026-07-08. Tag `v0.6.1` on master.
+
 **Goal:** make entropy visible over time, not only at one scan point or one PR.
 
 - ✅ `entrolint history [ref] --limit N` samples recent commits without checking
@@ -163,7 +165,7 @@ SARIF severity cap at `warning` while the formula is unstable (no blocking
 - ✅ Table and JSON output for the first phase-portrait data layer.
 - ✅ Mainline history by default via `--first-parent=true`.
 - ✅ `history --html out/` writes a self-contained SVG/HTML phase portrait.
-- ⏳ Trend annotations and heat-map links for selected commits.
+- ⏭ Trend annotations and heat-map links for selected commits are deferred.
 
 Full design: [docs/phase-portrait.md](docs/phase-portrait.md).
 

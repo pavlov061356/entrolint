@@ -161,7 +161,7 @@ jobs:
 
 | Input          | Default           | Description                                                        |
 | -------------- | ----------------- | ------------------------------------------------------------------ |
-| `version`      | `latest`          | `latest`, a tag (`v0.6.0`), or `source` (build from the checkout). |
+| `version`      | `latest`          | `latest`, a tag (`v0.6.1`), or `source` (build from the checkout). |
 | `base`         | PR base branch    | Base ref for ΔS (`origin/<base_ref>` on PRs).                      |
 | `head`         | `HEAD`            | Head ref.                                                          |
 | `config`       | `.entrolint.yaml` | Path to the config; defaults to `.entrolint.yaml` at the root.     |
@@ -221,24 +221,20 @@ More background:
 
 ## Status
 
-📦 **v0.6** (latest release) — visualization: an HTML **heat map** you can show
-the team. `entrolint scan --html out/` writes a self-contained squarified treemap
-of the repo (tile area = entropy `S`, colour = temperature `T`), grouped by
-package, with file labels and a click-through per-microstate breakdown. The same
-release hardens the v0.5 engine — a `ΔS`-symmetry fix and a markedly cheaper
-`check` cross-file pre-pass. Builds on the v0.5 `cross_duplication` microstate
-(structurally-identical code copy-pasted **across** files), the v0.4 CI
-integration (the drop-in `entrolint-check` GitHub Action — ΔS / scaling class /
-hotspots as a PR comment + SARIF to Code Scanning, plus `--format markdown|sarif`),
-the v0.3 structural microstates (`coupling`, `duplication`), and the v0.2
-predictive scaling class (O-class detectors `shotgun`, `implementor_scan`,
-`switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
-`scaling_class` line next to `ΔS`). The formula, weights, and threshold are
-considered unstable until v1.0 — `S` values may shift between releases.
-
-🚧 **v0.6.1 in development** — phase portrait: `entrolint history` samples
+📦 **v0.6.1** (latest release) — phase portrait: `entrolint history` samples
 recent git commits and emits total repository entropy `S(t)` as table, JSON, or
-a self-contained SVG/HTML chart.
+a self-contained SVG/HTML chart. The X axis is a real commit-time scale, so
+periods without commits are shown as gaps rather than synthetic points.
+
+v0.6 shipped the HTML **heat map**: `entrolint scan --html out/` writes a
+self-contained squarified treemap of the repo (tile area = entropy `S`, colour =
+temperature `T`), grouped by package, with file labels and a click-through
+per-microstate breakdown. The same release hardens the v0.5 engine — a
+`ΔS`-symmetry fix and a markedly cheaper `check` cross-file pre-pass. Builds on
+the v0.5 `cross_duplication` microstate, the v0.4 CI integration, the v0.3
+structural microstates (`coupling`, `duplication`), and the v0.2 predictive
+scaling class. The formula, weights, and threshold are considered unstable until
+v1.0 — `S` values may shift between releases.
 
 ## Contributing
 
