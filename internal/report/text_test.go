@@ -157,6 +157,43 @@ func TestScanTableAndJSON(t *testing.T) {
 	}
 }
 
+func TestHistoryTableAndJSON(t *testing.T) {
+	res := pipeline.HistoryResult{
+		Ref: "HEAD",
+		Points: []pipeline.HistoryPoint{
+			{
+				SHA:        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				ShortSHA:   "aaaaaaa",
+				CommitTime: "2026-07-01T10:00:00+03:00",
+				Subject:    "start",
+				S:          1.25,
+				FileCount:  3,
+			},
+		},
+	}
+	table := HistoryTable(res)
+	for _, want := range []string{"SHA", "2026-07-01", "aaaaaaa", "1.25", "start"} {
+		if !strings.Contains(table, want) {
+			t.Errorf("table missing %q\n%s", want, table)
+		}
+	}
+
+	data, err := HistoryJSON(res)
+	if err != nil {
+		t.Fatalf("HistoryJSON: %v", err)
+	}
+	var got pipeline.HistoryResult
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, data)
+	}
+	if got.Ref != "HEAD" || len(got.Points) != 1 || got.Points[0].ShortSHA != "aaaaaaa" {
+		t.Errorf("round-trip mismatch: %+v", got)
+	}
+	if !strings.HasSuffix(string(data), "\n") {
+		t.Error("HistoryJSON must end with a trailing newline")
+	}
+}
+
 func TestNonO1Hits_FiltersAndFlattens(t *testing.T) {
 	r := scaling.Result{Files: []scaling.FileResult{
 		{Hits: []scaling.Hit{

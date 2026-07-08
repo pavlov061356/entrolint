@@ -49,4 +49,5 @@ as SVG; the only JavaScript is the click-to-drill-down panel.
 The ROADMAP's second visualization — a **phase portrait**, an `S(t)` curve over
 git history — is **deferred to v0.6.1**. It needs a multi-commit replay (scan at
 each point in a window), a distinct capability from the single-scan treemap, so
-it ships on its own rather than holding up the heat map.
+it ships on its own rather than holding up the heat map. The v0.6.1 design is
+documented in [phase-portrait.md](phase-portrait.md).

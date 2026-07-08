@@ -70,6 +70,65 @@ func TestScanHTML_Deterministic(t *testing.T) {
 	}
 }
 
+func TestHistoryHTML_SelfContainedAndValid(t *testing.T) {
+	html, err := HistoryHTML(pipeline.HistoryResult{
+		Ref: "HEAD",
+		Points: []pipeline.HistoryPoint{
+			{ShortSHA: "aaaaaaa", CommitTime: "2026-07-01T10:00:00+03:00", Subject: "start", S: 1, FileCount: 2},
+			{ShortSHA: "bbbbbbb", CommitTime: "2026-07-02T10:00:00+03:00", Subject: "grow", S: 2.5, FileCount: 3},
+		},
+	})
+	if err != nil {
+		t.Fatalf("HistoryHTML: %v", err)
+	}
+	s := string(html)
+	if !strings.HasPrefix(s, "<!doctype html>") {
+		t.Error("output is not an HTML document")
+	}
+	for _, bad := range []string{`src="http`, `href="http`, "//cdn", "<link", "<script"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("report is not self-contained/static: found %q", bad)
+		}
+	}
+	for _, want := range []string{"entrolint phase portrait", "aaaaaaa", "bbbbbbb", "polyline", "grow", "commit date", "line = total S", "dot = commit", "text-anchor:end"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("history report missing %q", want)
+		}
+	}
+}
+
+func TestHistoryHTML_Deterministic(t *testing.T) {
+	res := pipeline.HistoryResult{
+		Ref:    "dev",
+		Points: []pipeline.HistoryPoint{{ShortSHA: "aaaaaaa", CommitTime: "2026-07-01T10:00:00+03:00", Subject: "start", S: 1, FileCount: 2}},
+	}
+	a, _ := HistoryHTML(res)
+	b, _ := HistoryHTML(res)
+	if string(a) != string(b) {
+		t.Error("HistoryHTML must be deterministic for a fixed input")
+	}
+}
+
+func TestHistoryHTML_UsesCommitTimeScale(t *testing.T) {
+	data := buildHistoryHTMLData(pipeline.HistoryResult{
+		Ref: "HEAD",
+		Points: []pipeline.HistoryPoint{
+			{ShortSHA: "aaaaaaa", CommitTime: "2026-07-01T10:00:00+03:00", Subject: "start", S: 1, FileCount: 2},
+			{ShortSHA: "bbbbbbb", CommitTime: "2026-07-02T10:00:00+03:00", Subject: "next day", S: 2, FileCount: 2},
+			{ShortSHA: "ccccccc", CommitTime: "2026-07-12T10:00:00+03:00", Subject: "later", S: 3, FileCount: 2},
+		},
+	})
+	firstGap := data.Points[1].X - data.Points[0].X
+	secondGap := data.Points[2].X - data.Points[1].X
+	if secondGap <= firstGap*5 {
+		t.Errorf("x-axis must be time-proportional, got first gap %.2f and second gap %.2f", firstGap, secondGap)
+	}
+	if data.XTicks[0].Anchor != "start" || data.XTicks[len(data.XTicks)-1].Anchor != "end" {
+		t.Errorf("edge X ticks must anchor inward, got first=%q last=%q",
+			data.XTicks[0].Anchor, data.XTicks[len(data.XTicks)-1].Anchor)
+	}
+}
+
 // TestTreemap_AreaProportionalToEntropy: in a flat layout the rectangle area
 // is the file's entropy S, so a 4×-entropy file gets a 4×-area tile.
 func TestTreemap_AreaProportionalToEntropy(t *testing.T) {

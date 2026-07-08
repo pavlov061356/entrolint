@@ -25,5 +25,5 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(scanCmd, checkCmd, versionCmd)
+	rootCmd.AddCommand(scanCmd, checkCmd, historyCmd, versionCmd)
 }

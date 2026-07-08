@@ -27,7 +27,7 @@ the code will be to maintain, and shows how that number changes with every chang
 For a deeper positioning against traditional linters and quality dashboards, see
 [docs/why-entrolint.md](docs/why-entrolint.md).
 
-## Two modes
+## Three commands
 
 ### `scan` — a heat map of the whole repo
 
@@ -44,6 +44,14 @@ disorder or lower it. It plugs into CI and blocks PRs that worsen maintainabilit
 beyond a configured threshold.
 
 > Positive ΔS = the code became harder to maintain.
+
+### `history` — phase portrait data
+
+Samples recent commits without checking them out and computes total repository
+entropy `S` at each point. This is the data layer for the phase portrait:
+`entrolint history --limit 30` shows whether the system is heating up or cooling
+down over time; `entrolint history --html out/` writes a self-contained SVG/HTML
+chart. See [docs/phase-portrait.md](docs/phase-portrait.md).
 
 ## Installation
 
@@ -65,6 +73,10 @@ entrolint scan --html out/
 # PR gate: compare a feature branch against dev, fail if the threshold is exceeded.
 entrolint check --base dev --head HEAD
 
+# Phase portrait data: total entropy over recent mainline commits.
+entrolint history --limit 30
+entrolint history --html entropy-history/
+
 # Machine-readable report for CI / a PR bot:
 entrolint check --base origin/dev --head HEAD --format json > delta.json
 ```
@@ -75,12 +87,13 @@ when `delta_s_max` is exceeded.
 
 ### Output formats
 
-Both commands take `--format`:
+Commands that render to stdout take `--format`:
 
-| Command | Formats                               | Notable use                    |
-| ------- | ------------------------------------- | ------------------------------ |
-| `scan`  | `table` (default), `json`, `sarif`    | `sarif` → GitHub Code Scanning |
-| `check` | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
+| Command   | Formats                               | Notable use                    |
+| --------- | ------------------------------------- | ------------------------------ |
+| `scan`    | `table` (default), `json`, `sarif`    | `sarif` → GitHub Code Scanning |
+| `check`   | `table` (default), `json`, `markdown` | `markdown` → a PR-comment body |
+| `history` | `table` (default), `json`             | `json` → phase-portrait data   |
 
 (`--json` is a deprecated alias for `--format json`.)
 
@@ -193,6 +206,8 @@ More background:
   structure for heat-map walkthroughs and maintainability reviews.
 - [Diagnostic examples](docs/examples/README.md) — the template filled from
   `entrolint scan` on this repository and selected public Go projects.
+- [Phase portrait](docs/phase-portrait.md) — total entropy `S` over recent git
+  history.
 - [Formula](docs/formula.md) — the current entropy math.
 - [Scaling classes](docs/scaling.md) — the predictive PR-level signal.
 
@@ -220,6 +235,10 @@ predictive scaling class (O-class detectors `shotgun`, `implementor_scan`,
 `switch_case_symmetry`, `identifier_fanout`, `state_multiplier` emit a
 `scaling_class` line next to `ΔS`). The formula, weights, and threshold are
 considered unstable until v1.0 — `S` values may shift between releases.
+
+🚧 **v0.6.1 in development** — phase portrait: `entrolint history` samples
+recent git commits and emits total repository entropy `S(t)` as table, JSON, or
+a self-contained SVG/HTML chart.
 
 ## Contributing
 
