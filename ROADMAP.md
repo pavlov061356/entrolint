@@ -198,6 +198,9 @@ change; from 1.0 on — only per semver.
 
 - A calibration corpus from public Go repositories (entrolint analyzes them).
   The author forms the regression ground truth, not an external community.
+- A reproducible calibration harness over local checkout roots and candidate
+  weight configs. First pass: contribution-balance audit; later pass: bug-fix /
+  revert-history validation if the defaults change.
 - Weight calibration: learn the formula weights from real bug-fix history, or
   explicitly keep the current defaults and document why. This must happen before
   the formula freeze.

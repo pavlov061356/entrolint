@@ -8,6 +8,13 @@ versions.
 
 ## [Unreleased]
 
+### Added
+
+- Development-only `cmd/entrolint-calibrate` harness for the pre-1.0 weight
+  calibration gate. It compares candidate `.entrolint.yaml` weight sets across
+  local checkout roots and reports per-microstate contribution shares without
+  changing the released `entrolint` CLI.
+
 ### Fixed
 
 - Calibration cache now records the formula/config signature (active
