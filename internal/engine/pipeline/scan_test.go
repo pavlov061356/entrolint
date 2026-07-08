@@ -193,9 +193,10 @@ func B(x int) {
 	// normalize() returns non-zero values — scores will be ~999× the
 	// fresh-calibration scores.
 	bogus := cache.State{
-		Version: cache.SchemaVersion,
-		K:       999.0,
-		Alpha:   0.5,
+		Version:   cache.SchemaVersion,
+		Signature: cacheSignature(structuralMicrostates(), config.Default()),
+		K:         999.0,
+		Alpha:     0.5,
 		Microstates: map[string]thermo.LogNormalParams{
 			"cyclomatic":        {Mu: 0, Sigma: 1, Valid: true},
 			"nesting":           {Mu: 0, Sigma: 1, Valid: true},
@@ -272,6 +273,45 @@ func A() { fmt.Println() }
 	}
 	if _, ok := reloaded.Microstates["coupling"]; !ok {
 		t.Error("expected fresh calibration to add coupling lognormal — stale cache survived")
+	}
+}
+
+func TestScan_CacheRecalibratesOnWeightChange(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		"a.go": `package p
+func A(x int) { if x > 0 { _ = x } }
+`,
+		"b.go": `package p
+func B(x int) {
+	for i := 0; i < x; i++ { _ = i }
+}
+`,
+	})
+	cachePath := filepath.Join(dir, ".entrolint.cache.json")
+
+	if _, err := Scan(ScanOptions{Root: dir, Config: config.Default(), CachePath: cachePath}); err != nil {
+		t.Fatalf("initial Scan: %v", err)
+	}
+	initial, err := cache.Load(cachePath)
+	if err != nil {
+		t.Fatalf("Load initial cache: %v", err)
+	}
+	if got := initial.Signature.Weights["length"]; got != 0.5 {
+		t.Fatalf("initial length weight = %v, want 0.5", got)
+	}
+
+	changed := config.Default()
+	changed.Weights["length"] = 2.0
+	if _, err := Scan(ScanOptions{Root: dir, Config: changed, CachePath: cachePath}); err != nil {
+		t.Fatalf("Scan after weight change: %v", err)
+	}
+	reloaded, err := cache.Load(cachePath)
+	if err != nil {
+		t.Fatalf("Load changed cache: %v", err)
+	}
+	if got := reloaded.Signature.Weights["length"]; got != 2.0 {
+		t.Errorf("cache signature length weight = %v, want 2.0", got)
 	}
 }
 

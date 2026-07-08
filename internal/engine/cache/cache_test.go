@@ -13,14 +13,25 @@ import (
 
 func sampleState() State {
 	return State{
-		Version: SchemaVersion,
-		K:       1.5,
-		Alpha:   0.5,
+		Version:   SchemaVersion,
+		Signature: sampleSignature(),
+		K:         1.5,
+		Alpha:     0.5,
 		Microstates: map[string]thermo.LogNormalParams{
 			"cyclomatic": {Mu: 1.2, Sigma: 0.7, Valid: true},
 			"nesting":    {Mu: 0.8, Sigma: 0.3, Valid: true},
 			"length":     {Mu: 4.2, Sigma: 1.1, Valid: true},
 		},
+	}
+}
+
+func sampleSignature() Signature {
+	return Signature{
+		FormulaVersion:     1,
+		Microstates:        []string{"cyclomatic", "nesting", "length"},
+		Weights:            map[string]float64{"cyclomatic": 1.0, "nesting": 0.8, "length": 0.5},
+		NormalizationFloor: 0.3,
+		Alpha:              0.5,
 	}
 }
 
@@ -42,6 +53,9 @@ func TestSaveLoad_Roundtrip(t *testing.T) {
 	}
 	if got.Alpha != want.Alpha {
 		t.Errorf("Alpha = %v, want %v", got.Alpha, want.Alpha)
+	}
+	if !got.Signature.Equal(want.Signature) {
+		t.Errorf("Signature = %+v, want %+v", got.Signature, want.Signature)
 	}
 	for name, wantP := range want.Microstates {
 		gotP := got.Microstates[name]
@@ -128,6 +142,31 @@ func TestHasAll_PresentButDegenerateCountsAsCached(t *testing.T) {
 	}
 }
 
+func TestValidFor(t *testing.T) {
+	s := sampleState()
+	if !s.ValidFor(sampleSignature()) {
+		t.Fatal("sample state must be valid for its own signature")
+	}
+
+	changedWeights := sampleSignature()
+	changedWeights.Weights["length"] = 0.9
+	if s.ValidFor(changedWeights) {
+		t.Error("changed weights must invalidate cached K")
+	}
+
+	changedOrder := sampleSignature()
+	changedOrder.Microstates = []string{"length", "nesting", "cyclomatic"}
+	if s.ValidFor(changedOrder) {
+		t.Error("changed microstate order must invalidate the cache")
+	}
+
+	oldUnsigned := sampleState()
+	oldUnsigned.Signature = Signature{}
+	if oldUnsigned.ValidFor(sampleSignature()) {
+		t.Error("old caches without a signature must miss")
+	}
+}
+
 func TestSave_FillsMissingVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.json")
 	s := sampleState()
@@ -158,7 +197,7 @@ func TestStateFromEngine_ReflectsCalibration(t *testing.T) {
 	}
 	e := thermo.NewEngine(ms, weights, 0.42, 0.5, lognormal)
 
-	s := StateFromEngine(e)
+	s := StateFromEngine(e, sampleSignature())
 	if s.K != 0.42 {
 		t.Errorf("K = %v, want 0.42", s.K)
 	}
@@ -167,6 +206,9 @@ func TestStateFromEngine_ReflectsCalibration(t *testing.T) {
 	}
 	if s.Microstates["cyclomatic"] != lognormal["cyclomatic"] {
 		t.Errorf("Microstates[cyclomatic] = %+v, want %+v", s.Microstates["cyclomatic"], lognormal["cyclomatic"])
+	}
+	if !s.Signature.Equal(sampleSignature()) {
+		t.Errorf("Signature = %+v, want %+v", s.Signature, sampleSignature())
 	}
 }
 
@@ -179,7 +221,7 @@ func TestSaveLoad_RoundtripPreservesEngineState(t *testing.T) {
 	original := thermo.NewEngine(ms, weights, 0.42, 0.5, lognormal)
 
 	path := filepath.Join(t.TempDir(), "cache.json")
-	if err := Save(path, StateFromEngine(original)); err != nil {
+	if err := Save(path, StateFromEngine(original, sampleSignature())); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	loaded, err := Load(path)
