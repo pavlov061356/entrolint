@@ -54,6 +54,97 @@ type HistoryResult struct {
 	Points []HistoryPoint `json:"points"`
 }
 
+// TreeScorerOptions configures a scorer for historical git trees.
+type TreeScorerOptions struct {
+	// Root anchors Git commands and supplies the on-disk calibration tree when
+	// FrameRef is empty.
+	Root string
+
+	// FrameRef, when non-empty, calibrates from the resolved committed Git tree
+	// instead of the on-disk Root. Empty preserves the production history path's
+	// working-tree calibration behavior.
+	FrameRef string
+
+	// ScanOptions carries the candidate config and cache policy. Root inside
+	// ScanOptions is ignored; this struct's Root wins.
+	ScanOptions ScanOptions
+
+	// GitRunner reads historical trees. If nil, a LocalRunner at Root is used.
+	GitRunner gitx.Runner
+}
+
+// TreeScorer scores multiple historical refs in one calibration frame.
+type TreeScorer struct {
+	runner   gitx.Runner
+	engine   *thermo.Engine
+	weights  map[string]float64
+	frameSHA string
+}
+
+// NewTreeScorer calibrates once on either FrameRef's committed Git tree or the
+// current on-disk Root when FrameRef is empty.
+func NewTreeScorer(opts TreeScorerOptions) (*TreeScorer, error) {
+	rootAbs, err := filepath.Abs(opts.Root)
+	if err != nil {
+		return nil, err
+	}
+	runner := opts.GitRunner
+	if runner == nil {
+		runner = gitx.LocalRunner{Dir: rootAbs}
+	}
+	scanOpts := opts.ScanOptions
+	scanOpts.Root = opts.Root
+	var files []microstate.File
+	var frameSHA string
+	if opts.FrameRef == "" {
+		files, err = analyzeTree(scanOpts)
+		if err != nil {
+			return nil, fmt.Errorf("calibration tree walk: %w", err)
+		}
+	} else {
+		frameSHA, err = gitx.ResolveRef(runner, opts.FrameRef)
+		if err != nil {
+			return nil, fmt.Errorf("resolve calibration frame %q: %w", opts.FrameRef, err)
+		}
+		files, err = treeMicrostateFiles(runner, frameSHA, scanOpts.Config.Weights)
+		if err != nil {
+			return nil, fmt.Errorf("calibration Git tree %s: %w", frameSHA, err)
+		}
+		// The cache signature does not include a tree identity. A committed frame
+		// must therefore always be fitted from the resolved Git tree.
+		scanOpts.CachePath = ""
+		scanOpts.Recalibrate = true
+	}
+	return &TreeScorer{
+		runner:   runner,
+		engine:   resolveEngine(scanOpts, structuralMicrostates(), files),
+		weights:  scanOpts.Config.Weights,
+		frameSHA: frameSHA,
+	}, nil
+}
+
+// Score returns per-file structural scores for ref. Historical blobs do not
+// carry working-tree churn, so T equals S and the result is an S ranking.
+func (s *TreeScorer) Score(ref string) ([]FileScore, error) {
+	return scoreTreeFiles(s.runner, s.engine, ref, s.weights)
+}
+
+func (s *TreeScorer) scoreTotal(ref string) (float64, int, error) {
+	files, err := treeMicrostateFiles(s.runner, ref, s.weights)
+	if err != nil {
+		return 0, 0, err
+	}
+	var total float64
+	for _, file := range files {
+		total += s.engine.Score(file).S
+	}
+	return total, len(files), nil
+}
+
+// FrameSHA returns the full commit SHA used for Git-tree calibration. It is
+// empty when the scorer was calibrated from the on-disk working tree.
+func (s *TreeScorer) FrameSHA() string { return s.frameSHA }
+
 // History computes total structural entropy at recent commits without
 // checking them out. The engine is calibrated once on the current Root tree,
 // then every historical tree is scored in that same frame so the points are
@@ -76,14 +167,18 @@ func History(opts HistoryOptions) (HistoryResult, error) {
 	if err != nil {
 		return HistoryResult{}, fmt.Errorf("history log %q: %w", ref, err)
 	}
-	engine, err := calibrateForHistory(opts)
+	scorer, err := NewTreeScorer(TreeScorerOptions{
+		Root:        opts.Root,
+		ScanOptions: opts.ScanOptions,
+		GitRunner:   runner,
+	})
 	if err != nil {
 		return HistoryResult{}, err
 	}
 
 	points := make([]HistoryPoint, 0, len(commits))
 	for _, c := range commits {
-		total, files, err := scoreTreeTotal(runner, engine, c.SHA, opts.ScanOptions.Config.Weights)
+		total, files, err := scorer.scoreTotal(c.SHA)
 		if err != nil {
 			return HistoryResult{}, fmt.Errorf("score tree %s: %w", c.SHA, err)
 		}
@@ -99,25 +194,23 @@ func History(opts HistoryOptions) (HistoryResult, error) {
 	return HistoryResult{Ref: ref, Points: points}, nil
 }
 
-func calibrateForHistory(opts HistoryOptions) (*thermo.Engine, error) {
-	scanOpts := opts.ScanOptions
-	scanOpts.Root = opts.Root
-	files, err := analyzeTree(scanOpts)
+func scoreTreeFiles(runner gitx.Runner, engine *thermo.Engine, ref string, weights map[string]float64) ([]FileScore, error) {
+	files, err := treeMicrostateFiles(runner, ref, weights)
 	if err != nil {
-		return nil, fmt.Errorf("calibration tree walk: %w", err)
+		return nil, err
 	}
-	return resolveEngine(scanOpts, structuralMicrostates(), files), nil
+	return rank(engine, files), nil
 }
 
-func scoreTreeTotal(runner gitx.Runner, engine *thermo.Engine, ref string, weights map[string]float64) (float64, int, error) {
+func treeMicrostateFiles(runner gitx.Runner, ref string, weights map[string]float64) ([]microstate.File, error) {
 	paths, err := gitx.TreeFiles(runner, ref)
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 	paths = analyzableSorted(paths)
 	blobs, err := gitx.BlobsAtRef(runner, ref, paths)
 	if err != nil {
-		return 0, 0, err
+		return nil, err
 	}
 
 	var cx microstate.CrossFileSource
@@ -125,18 +218,16 @@ func scoreTreeTotal(runner gitx.Runner, engine *thermo.Engine, ref string, weigh
 		cx = corpus.BuildFromBlobs(blobs, nil)
 	}
 
-	var total float64
-	var count int
+	files := make([]microstate.File, 0, len(paths))
 	for _, path := range paths {
 		f, ok := golang.ParseGoBytes(path, blobs[path])
 		if !ok {
 			continue
 		}
 		f.Corpus = cx
-		total += engine.Score(f).S
-		count++
+		files = append(files, f)
 	}
-	return total, count, nil
+	return files, nil
 }
 
 func analyzableSorted(paths []string) []string {

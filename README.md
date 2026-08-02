@@ -218,8 +218,8 @@ More background:
 - [Phase portrait](docs/phase-portrait.md) — total entropy `S` over recent git
   history.
 - [Formula](docs/formula.md) — the current entropy math.
-- [Calibration harness](docs/calibration.md) — the pre-1.0 weight-calibration
-  audit tool.
+- [Calibration harness](docs/calibration.md) — contribution-balance and bounded
+  corrective-history validation for the v1.0 weight decision.
 - [Scaling classes](docs/scaling.md) — the predictive PR-level signal.
 
 ## Terminology

@@ -14,6 +14,11 @@ versions.
   calibration gate. It compares candidate `.entrolint.yaml` weight sets across
   local checkout roots and reports per-microstate contribution shares without
   changing the released `entrolint` CLI.
+- Bounded `entrolint-calibrate history` validation. It scores corrective
+  commits' parent trees without checkout, reports AUC/top-k/percentile metrics,
+  and emits auditable per-commit labels in JSON. The 11-repository v1.0 run
+  found no meaningful advantage over the current default weights, so the
+  defaults remain unchanged.
 
 ### Fixed
 

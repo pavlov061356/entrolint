@@ -48,6 +48,46 @@ func TestLogCommits_InvalidRef(t *testing.T) {
 	}
 }
 
+func TestSingleParent(t *testing.T) {
+	t.Run("returns the sole parent", func(t *testing.T) {
+		g := &gitStub{out: map[string][]byte{
+			"rev-list --parents --max-count=1 child": []byte("child parent\n"),
+		}}
+		parent, ok, err := SingleParent(g, "child")
+		if err != nil {
+			t.Fatalf("SingleParent: %v", err)
+		}
+		if !ok || parent != "parent" {
+			t.Fatalf("SingleParent = %q, %v; want parent, true", parent, ok)
+		}
+	})
+
+	t.Run("rejects root and merge commits", func(t *testing.T) {
+		g := &gitStub{out: map[string][]byte{
+			"rev-list --parents --max-count=1 root":  []byte("root\n"),
+			"rev-list --parents --max-count=1 merge": []byte("merge left right\n"),
+		}}
+		for _, rev := range []string{"root", "merge"} {
+			parent, ok, err := SingleParent(g, rev)
+			if err != nil {
+				t.Fatalf("SingleParent(%q): %v", rev, err)
+			}
+			if ok || parent != "" {
+				t.Fatalf("SingleParent(%q) = %q, %v; want empty, false", rev, parent, ok)
+			}
+		}
+	})
+
+	t.Run("rejects empty output", func(t *testing.T) {
+		g := &gitStub{out: map[string][]byte{
+			"rev-list --parents --max-count=1 missing": nil,
+		}}
+		if _, _, err := SingleParent(g, "missing"); err == nil {
+			t.Fatal("SingleParent must reject empty rev-list output")
+		}
+	})
+}
+
 func TestParseCommitLog_RejectsMalformedRecords(t *testing.T) {
 	_, err := parseCommitLog([]byte("sha\x1fshort\x1fmissing-subject\x1e"))
 	if err == nil || !strings.Contains(err.Error(), "malformed") {

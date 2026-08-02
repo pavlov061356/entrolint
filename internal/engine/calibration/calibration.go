@@ -90,27 +90,19 @@ func Run(opts Options) (Report, error) {
 	if len(opts.Roots) == 0 {
 		return Report{}, errors.New("calibration: at least one root is required")
 	}
-	candidates := opts.Candidates
-	if len(candidates) == 0 {
-		candidates = []Candidate{{Name: "default", Config: config.Default()}}
+	candidates, err := normalizedCandidates(opts.Candidates)
+	if err != nil {
+		return Report{}, err
 	}
 
 	out := Report{Candidates: make([]CandidateReport, 0, len(candidates))}
 	for _, candidate := range candidates {
-		if candidate.Name == "" {
-			return Report{}, errors.New("calibration: candidate name is required")
-		}
-		cfg := candidate.Config
-		if cfg.Weights == nil {
-			cfg = config.Default()
-		}
-
 		repos := make([]RepoReport, 0, len(opts.Roots))
 		var all []pipeline.FileScore
 		for _, root := range opts.Roots {
 			result, err := pipeline.Scan(pipeline.ScanOptions{
 				Root:        root,
-				Config:      cfg,
+				Config:      candidate.Config,
 				Recalibrate: true,
 			})
 			if err != nil {
@@ -128,6 +120,23 @@ func Run(opts Options) (Report, error) {
 			Repos:     repos,
 			Aggregate: Summarize(all),
 		})
+	}
+	return out, nil
+}
+
+func normalizedCandidates(candidates []Candidate) ([]Candidate, error) {
+	if len(candidates) == 0 {
+		candidates = []Candidate{{Name: "default", Config: config.Default()}}
+	}
+	out := make([]Candidate, len(candidates))
+	for i, candidate := range candidates {
+		if candidate.Name == "" {
+			return nil, errors.New("calibration: candidate name is required")
+		}
+		if candidate.Config.Weights == nil {
+			candidate.Config = config.Default()
+		}
+		out[i] = candidate
 	}
 	return out, nil
 }

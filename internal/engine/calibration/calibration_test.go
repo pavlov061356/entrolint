@@ -8,16 +8,17 @@ import (
 	"github.com/pavlov061356/entrolint/internal/engine/config"
 )
 
-func TestRun_DefaultCandidate(t *testing.T) {
-	dir := t.TempDir()
-	writeTree(t, dir, map[string]string{
-		"a.go": `package p
+func TestRun(t *testing.T) {
+	t.Run("uses default candidate", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTree(t, dir, map[string]string{
+			"a.go": `package p
 func A(x int) int {
 	if x > 0 { return x }
 	return -x
 }
 `,
-		"b.go": `package p
+			"b.go": `package p
 func B(xs []int) int {
 	var total int
 	for _, x := range xs {
@@ -26,37 +27,37 @@ func B(xs []int) int {
 	return total
 }
 `,
+		})
+
+		report, err := Run(Options{Roots: []string{dir}})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if len(report.Candidates) != 1 {
+			t.Fatalf("candidates = %d, want 1", len(report.Candidates))
+		}
+		got := report.Candidates[0]
+		if got.Name != "default" {
+			t.Fatalf("candidate name = %q, want default", got.Name)
+		}
+		if got.Aggregate.Files != 2 {
+			t.Fatalf("aggregate files = %d, want 2", got.Aggregate.Files)
+		}
+		if got.Aggregate.TotalS <= 0 {
+			t.Fatalf("aggregate TotalS = %v, want positive", got.Aggregate.TotalS)
+		}
+		if share(got.Aggregate, "cyclomatic") <= 0 {
+			t.Fatal("cyclomatic share must be positive for branching files")
+		}
 	})
 
-	report, err := Run(Options{Roots: []string{dir}})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if len(report.Candidates) != 1 {
-		t.Fatalf("candidates = %d, want 1", len(report.Candidates))
-	}
-	got := report.Candidates[0]
-	if got.Name != "default" {
-		t.Fatalf("candidate name = %q, want default", got.Name)
-	}
-	if got.Aggregate.Files != 2 {
-		t.Fatalf("aggregate files = %d, want 2", got.Aggregate.Files)
-	}
-	if got.Aggregate.TotalS <= 0 {
-		t.Fatalf("aggregate TotalS = %v, want positive", got.Aggregate.TotalS)
-	}
-	if share(got.Aggregate, "cyclomatic") <= 0 {
-		t.Fatal("cyclomatic share must be positive for branching files")
-	}
-}
-
-func TestRun_CandidateWeightsAffectContributionShares(t *testing.T) {
-	dir := t.TempDir()
-	writeTree(t, dir, map[string]string{
-		"short.go": `package p
+	t.Run("candidate weights affect contribution shares", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTree(t, dir, map[string]string{
+			"short.go": `package p
 func Short() {}
 `,
-		"long.go": `package p
+			"long.go": `package p
 func Long() {
 	_ = 1
 	_ = 2
@@ -65,58 +66,59 @@ func Long() {
 	_ = 5
 }
 `,
+		})
+
+		noLength := config.Default()
+		noLength.Weights["length"] = 0
+		report, err := Run(Options{
+			Roots: []string{dir},
+			Candidates: []Candidate{
+				{Name: "default", Config: config.Default()},
+				{Name: "no-length", Config: noLength},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if len(report.Candidates) != 2 {
+			t.Fatalf("candidates = %d, want 2", len(report.Candidates))
+		}
+		if got := share(report.Candidates[1].Aggregate, "length"); got != 0 {
+			t.Fatalf("no-length length share = %v, want 0", got)
+		}
 	})
 
-	noLength := config.Default()
-	noLength.Weights["length"] = 0
-	report, err := Run(Options{
-		Roots: []string{dir},
-		Candidates: []Candidate{
-			{Name: "default", Config: config.Default()},
-			{Name: "no-length", Config: noLength},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if len(report.Candidates) != 2 {
-		t.Fatalf("candidates = %d, want 2", len(report.Candidates))
-	}
-	if got := share(report.Candidates[1].Aggregate, "length"); got != 0 {
-		t.Fatalf("no-length length share = %v, want 0", got)
-	}
-}
-
-func TestRun_CandidateWithoutConfigUsesDefaults(t *testing.T) {
-	dir := t.TempDir()
-	writeTree(t, dir, map[string]string{
-		"a.go": `package p
+	t.Run("candidate without config uses defaults", func(t *testing.T) {
+		dir := t.TempDir()
+		writeTree(t, dir, map[string]string{
+			"a.go": `package p
 func A(x int) int {
 	if x > 0 { return x }
 	return -x
 }
 `,
-		"b.go": `package p
+			"b.go": `package p
 func B() {}
 `,
+		})
+
+		report, err := Run(Options{
+			Roots:      []string{dir},
+			Candidates: []Candidate{{Name: "implicit-default"}},
+		})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if got := report.Candidates[0].Aggregate.TotalS; got <= 0 {
+			t.Fatalf("TotalS = %v, want positive default scoring", got)
+		}
 	})
 
-	report, err := Run(Options{
-		Roots:      []string{dir},
-		Candidates: []Candidate{{Name: "implicit-default"}},
+	t.Run("requires root", func(t *testing.T) {
+		if _, err := Run(Options{}); err == nil {
+			t.Fatal("Run without roots must fail")
+		}
 	})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if got := report.Candidates[0].Aggregate.TotalS; got <= 0 {
-		t.Fatalf("TotalS = %v, want positive default scoring", got)
-	}
-}
-
-func TestRun_RequiresRoot(t *testing.T) {
-	if _, err := Run(Options{}); err == nil {
-		t.Fatal("Run without roots must fail")
-	}
 }
 
 func share(s Summary, name string) float64 {

@@ -47,6 +47,24 @@ func LogCommits(r Runner, ref string, limit int, firstParent bool) ([]Commit, er
 	return parseCommitLog(out)
 }
 
+// SingleParent returns the sole parent of rev. Root commits and merge commits
+// return ok=false so history validation can exclude samples whose pre-change
+// tree is ambiguous.
+func SingleParent(r Runner, rev string) (parent string, ok bool, err error) {
+	out, err := r.Run("rev-list", "--parents", "--max-count=1", rev)
+	if err != nil {
+		return "", false, wrapDiffErr(err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return "", false, fmt.Errorf("single parent %q: empty rev-list output", rev)
+	}
+	if len(fields) != 2 {
+		return "", false, nil
+	}
+	return fields[1], true, nil
+}
+
 func parseCommitLog(out []byte) ([]Commit, error) {
 	records := strings.Split(string(out), logRecordSep)
 	commits := make([]Commit, 0, len(records))
