@@ -12,10 +12,9 @@ the next.
 - Structural microstates: `cyclomatic`, `nesting`, `length` (v0.1) +
   `coupling`, `duplication` (v0.3) + `cross_duplication` (v0.5) — see
   [Microstates](#microstates). `churn` feeds only the temperature `T`, not `S`.
-- The weights `wᵢ` are hardcoded defaults in the binary. Before v1.0 they are
-  either calibrated on a public corpus and frozen, or the current defaults are
-  explicitly kept and documented as the v1.0 contract (see
-  [Pre-1.0 weight calibration](#pre-10-weight-calibration)).
+- The weights `wᵢ` are hardcoded defaults in the binary. The v1.0 calibration
+  gate retained the current values as the contract baseline (see
+  [v1.0 weight calibration decision](#v10-weight-calibration-decision)).
 
 ## Aggregation levels
 
@@ -57,8 +56,9 @@ S_file = k · Σᵢ wᵢ · ln(1 + mᵢ_norm)
 In statistical physics the entropy of independent subsystems adds up. Here we
 **postulate** that `cyclomatic` is independent of `nesting`, etc. — a
 simplification, but an honest one. In reality the microstates correlate (see
-[Known simplifications](#known-simplifications-v01)); the pre-1.0 calibration
-gate accounts for the correlation via explicit weight selection.
+[Known simplifications](#known-simplifications-and-retained-v10-choices)); the
+bounded v1.0 gate retained interpretable weights without decorrelating the
+microstates.
 
 ## Microstates
 
@@ -171,8 +171,8 @@ by a calibration pass over several real Go repositories. Cross-file clone mass i
 is consistently *smaller* — so a weight equal to `duplication`'s does not let it
 dominate `ΔS` (and the per-microstate lognormal CDF absorbs the distribution
 either way). The cross-file clones flagged on real codebases are genuine,
-recognizable duplication, not coincidental structural matches. The weight may
-still be re-tuned by the pre-1.0 calibration pass.
+recognizable duplication, not coincidental structural matches. The v1.0
+calibration gate retained this weight together with the other defaults.
 
 ## Temperature `T_file`
 
@@ -221,38 +221,54 @@ exists".
 The report shows **both numbers**: `ΔS_total` for human intuition, `ΔS_density`
 for the actual fail/pass decision.
 
-## Known simplifications (v0.1)
+## Known simplifications and retained v1.0 choices
 
 So as not to pretend everything is smooth:
 
 1. **The microstates are not independent.** `cyclomatic` correlates with
-   `length`, `nesting` with `cyclomatic`. An additive sum double-counts.
-   PCA decorrelation or regression-fitted weights are part of the pre-1.0
-   calibration gate.
-2. **The self-calibration is circular.** A uniformly clean or uniformly dirty
-   repo flattens the signal. Moving to a trained corpus is a v1.0 freeze
-   decision.
-3. **The `+1` in `ln(1+x)`** at large weights blurs the difference between
-   "0 problems" and "1 problem". It could be replaced with `ln(c+x)` for a
-   larger `c`, but that adds another knob — deferred.
-4. **The `churn` window is fixed at 90 days.** In projects with differing
-   release cadences this works worse; auto-tuning to release cadence is v1.0.
+   `length`, and `nesting` with `cyclomatic`, so the additive formula can count
+   related structure more than once. The bounded v1.0 calibration gate retained
+   the current interpretable additive weights; it did not fit a PCA or
+   regression model. Decorrelation remains post-1.0 research and any adopted
+   change must follow SemVer.
+2. **Self-calibration is repository-relative.** A uniformly clean or uniformly
+   difficult repository can flatten the signal. The v1.0 decision retains
+   per-repository calibration; this study did not train or validate a shared
+   cross-repository normalization model.
+3. **The `+1` in `ln(1+x)` is a simplifying choice.** At large weights it blurs
+   the difference between zero and one finding. Replacing it with another offset
+   would add a new fitted parameter and change the public formula, so v1.0 keeps
+   the current form.
+4. **The `churn` window remains fixed at 90 days.** The corrective-history study
+   validates structural `S` rankings, not churn or temperature `T`. Cadence-aware
+   churn tuning requires separate evidence and remains post-1.0 work.
 
-## Pre-1.0 weight calibration
+## v1.0 weight calibration decision
 
-Before v1.0 the weights `wᵢ` must be resolved as part of the public formula
-contract. The decision is explicit: either train and freeze new defaults, or keep
-the current defaults and document why they are stable enough for 1.x.
+The v1.0 gate explicitly compared the current defaults with equal weights and a
+candidate derived by balancing aggregate contribution shares. The recorded
+2026-07-17 validation scored parent trees from 105 corrective commits across 11
+public Go repositories, with 221 pre-existing changed Go files as labels. These
+figures predate the current stricter all-label audit schema; see the historical-run
+caveat in [calibration.md](calibration.md#bounded-history-validation).
 
-- **The regression target** is future bug-fix commits on the file within a
-  +90-day window (identified by regex-parsing commit messages: `fix:`, `bug:`,
-  `hotfix:`). A secondary validation is PR revision count.
-- **The candidate weights** are evaluated on a public corpus of Go repositories
-  and compared against the current defaults.
-- **The model family** starts with interpretable linear weights that map directly
-  onto `wᵢ`. More complex models are out of scope for the v1.0 contract unless
-  they can be explained without hiding the signal.
+All candidates ranked corrective files well above random:
 
-The architectural consequence for the v0.1 code: weights must be loaded from the
-config as data, not used as magic numbers. Then moving to a trained model is a
-change of source, not a refactor.
+| Candidate | Mean AUC | Top-10 recall | Top-20 recall |
+| --------- | -------: | ------------: | ------------: |
+| current defaults | 0.7586 | 35.3% | 52.5% |
+| equal weights | 0.7586 | 36.2% | 52.5% |
+| contribution-balanced | 0.7562 | 36.2% | 52.5% |
+
+The repository-paired AUC differences were effectively zero. The balanced
+candidate made contribution shares more symmetric but did not improve the
+outcome ranking.
+
+The v1.0 decision is therefore to **keep the current defaults**. This avoids a
+public `S` shift with no demonstrated maintainability benefit. The exact
+selection protocol, pinned corpus heads, per-metric interpretation, and
+limitations are documented in [calibration.md](calibration.md).
+
+Weights remain configuration data and can be overridden per repository. A
+future default change after v1.0 changes the public formula and must follow
+SemVer rather than silently retraining the model.
