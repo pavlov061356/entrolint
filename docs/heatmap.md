@@ -44,10 +44,9 @@ The heat map is a **report-layer** feature (`internal/report/html.go` +
 produces — no engine change. The squarified layout is computed in Go and emitted
 as SVG; the only JavaScript is the click-to-drill-down panel.
 
-## Not yet: the phase portrait
+## Related: the phase portrait
 
-The ROADMAP's second visualization — a **phase portrait**, an `S(t)` curve over
-git history — is **deferred to v0.6.1**. It needs a multi-commit replay (scan at
-each point in a window), a distinct capability from the single-scan treemap, so
-it ships on its own rather than holding up the heat map. The v0.6.1 design is
-documented in [phase-portrait.md](phase-portrait.md).
+The second visualization is the **phase portrait**, an `S(t)` curve over git
+history. It ships separately as `entrolint history` because it needs a
+multi-commit replay, a distinct capability from the single-scan treemap. The
+v0.6.1 design is documented in [phase-portrait.md](phase-portrait.md).
